@@ -19,7 +19,7 @@ const app = uWSApp().ws('/', {
   upgrade: (res, req, context) => {
     console.log('An Http connection wants to become WebSocket, URL: ' + req.getUrl() + '!');
 
-    const mtlsCert = req.getHeader('X-Forwarded-Tls-Client-Cert-Info');
+    const mtlsCert = req.getHeader('x-forwarded-tls-client-cert-info');
     if (mtlsCert === "") {
       res.end('mtlsCert is empty', true);
       return;
