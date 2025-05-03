@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "build": "tsc",
+    "build": "tsc && pnpm run postbuild",
     "serve": "node dist/index.js",
-    "postinstall": "buf generate && npx prisma generate"
+    "postinstall": "buf generate && npx prisma generate",
+    "postbuild": "cp -r src/generated dist/generated"
   },
   "keywords": [],
   "author": "",
