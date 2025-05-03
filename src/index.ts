@@ -19,21 +19,23 @@ const app = uWSApp().ws('/', {
   upgrade: (res, req, context) => {
     console.log('An Http connection wants to become WebSocket, URL: ' + req.getUrl() + '!');
 
-    const mtlsCert = req.getHeader('x-forwarded-tls-client-cert-info');
+    const mtlsCert = decodeURIComponent(req.getHeader('x-forwarded-tls-client-cert-info'));
     if (mtlsCert === "") {
       res.end('mtlsCert is empty', true);
       return;
     }
 
+    //Needs to match Subject="CN=aidens-macbook", and extract the CN without the "CN="
     const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
     if (!cnRes) {
       res.end('CN not found in mtlsCert', true);
       return;
     }
+    const cn = cnRes[1];
 
     /* This immediately calls open handler, you must not use res after this call */
     res.upgrade<UserData>({
-      certificate_cn: cnRes[1],
+      certificate_cn: cn,
     },
       req.getHeader('sec-websocket-key'),
       req.getHeader('sec-websocket-protocol'),
