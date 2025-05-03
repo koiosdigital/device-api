@@ -4,8 +4,10 @@ import { ClaimDevice, ErrorResponseSchema, Join, JoinResponseSchema, KDGlobalMes
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { validateToken } from "./auth";
+import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
+import { AMQPConnection } from "../amqp";
 
-const handleJoinMessage = async (ws: WebSocket<UserData>, message: Join, prisma: PrismaClient) => {
+const handleJoinMessage = async (ws: WebSocket<UserData>, message: Join, prisma: PrismaClient, amqp: AMQPConnection) => {
     const cn = ws.getUserData().certificate_cn;
     const device = await prisma.device.findUnique({
         where: {
@@ -23,16 +25,19 @@ const handleJoinMessage = async (ws: WebSocket<UserData>, message: Join, prisma:
 
     const needsClaimed = device.claims.length === 0;
 
-    const joinResponse = create(KDGlobalMessageSchema);
-    joinResponse.message.case = 'joinResponse';
-    joinResponse.message.value = create(JoinResponseSchema);
-    joinResponse.message.value.success = true;
-    joinResponse.message.value.needsClaimed = needsClaimed;
+    const apiResponse = create(DeviceAPIMessageSchema);
+    apiResponse.message.case = 'kdGlobalMessage';
+    apiResponse.message.value = create(KDGlobalMessageSchema);
+    apiResponse.message.value.message.case = 'joinResponse';
+    apiResponse.message.value.message.value = create(JoinResponseSchema);
+    apiResponse.message.value.message.value.success = true;
+    apiResponse.message.value.message.value.needsClaimed = needsClaimed;
 
-    ws.send(toBinary(KDGlobalMessageSchema, joinResponse), true);
+    const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
+    ws.send(resp, true);
 }
 
-const handleClaimDeviceMessage = async (ws: WebSocket<UserData>, message: ClaimDevice, prisma: PrismaClient) => {
+const handleClaimDeviceMessage = async (ws: WebSocket<UserData>, message: ClaimDevice, prisma: PrismaClient, amqp: AMQPConnection) => {
     const claimToken = message.claimToken;
     const cn = ws.getUserData().certificate_cn;
 
@@ -51,6 +56,7 @@ const handleClaimDeviceMessage = async (ws: WebSocket<UserData>, message: ClaimD
 
     //ensure claim token is valid
     try {
+        console.log('Validating claim token', claimToken);
         const subject = await validateToken(claimToken);
 
         //claim the device
@@ -63,33 +69,41 @@ const handleClaimDeviceMessage = async (ws: WebSocket<UserData>, message: ClaimD
         });
 
         //send success message
-        const claimResponse = create(KDGlobalMessageSchema);
-        claimResponse.message.case = 'okResponse';
-        claimResponse.message.value = create(OKResponseSchema);
-        claimResponse.message.value.success = true;
-        ws.send(toBinary(KDGlobalMessageSchema, claimResponse), true);
+        const apiResponse = create(DeviceAPIMessageSchema);
+        apiResponse.message.case = 'kdGlobalMessage';
+        apiResponse.message.value = create(KDGlobalMessageSchema);
+        apiResponse.message.value.message.case = 'okResponse';
+        apiResponse.message.value.message.value = create(OKResponseSchema);
+        apiResponse.message.value.message.value.success = true;
+        const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
+        ws.send(resp, true);
     } catch (e) {
         console.error('Claim error', e);
 
-        const claimResponse = create(KDGlobalMessageSchema);
-        claimResponse.message.case = 'errorResponse';
-        claimResponse.message.value = create(ErrorResponseSchema);
-        claimResponse.message.value.errorMessage = 'Claim Error';
-        ws.send(toBinary(KDGlobalMessageSchema, claimResponse), true);
+        //send error message
+        const apiResponse = create(DeviceAPIMessageSchema);
+        apiResponse.message.case = 'kdGlobalMessage';
+        apiResponse.message.value = create(KDGlobalMessageSchema);
+        apiResponse.message.value.message.case = 'errorResponse';
+        apiResponse.message.value.message.value = create(ErrorResponseSchema);
+        apiResponse.message.value.message.value.errorMessage = 'Invalid claim token';
+        const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
+        ws.send(resp, true);
         return;
     }
 }
 
-const handleCoreDumpMessage = async (ws: WebSocket<UserData>, message: UploadCoreDump, prisma: PrismaClient) => {
+const handleCoreDumpMessage = async (ws: WebSocket<UserData>, message: UploadCoreDump, prisma: PrismaClient, amqp: AMQPConnection) => {
 
 }
 
-export const commonMessageHandler = async (ws: WebSocket<UserData>, message: KDGlobalMessage, prisma: PrismaClient) => {
+export const commonMessageHandler = async (ws: WebSocket<UserData>, message: KDGlobalMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
+    console.log(message);
     if (message.message.case === 'join') {
-        handleJoinMessage(ws, message.message.value, prisma);
+        handleJoinMessage(ws, message.message.value, prisma, amqp);
     } else if (message.message.case === 'claimDevice') {
-        handleClaimDeviceMessage(ws, message.message.value, prisma);
+        handleClaimDeviceMessage(ws, message.message.value, prisma, amqp);
     } else if (message.message.case === 'uploadCoreDump') {
-        handleCoreDumpMessage(ws, message.message.value, prisma);
+        handleCoreDumpMessage(ws, message.message.value, prisma, amqp);
     }
 };

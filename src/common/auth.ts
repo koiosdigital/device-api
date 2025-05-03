@@ -14,7 +14,6 @@ export const validateToken = async (token: string): Promise<string> => {
         throw new Error(`Failed to fetch JWKS: ${response.statusText}`);
     }
     const jwks = await response.json();
-
     const keystore = await JWK.asKeyStore(jwks);
 
     const decodedToken = decode(token, { complete: true });

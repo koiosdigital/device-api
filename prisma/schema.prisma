@@ -31,6 +31,8 @@ model Device {
   deviceSettingsCommon DeviceSettingsCommon?
   deviceSettingsLantern DeviceSettingsLantern?
   deviceSettingsMatrx   DeviceSettingsMatrx?
+
+  LanternGroupDevices LanternGroupDevices[]
 }
 
 enum UserRole {
@@ -63,7 +65,12 @@ model DeviceSettingsLantern {
   device    Device   @relation(fields: [deviceId], references: [id])
   deviceId  String @unique
 
-  brightness Int
+  brightness Int @default(255)
+  my_effect  Int @default(0)
+  my_red     Int @default(0)
+  my_green   Int @default(0)
+  my_blue    Int @default(0)
+  my_speed   Int @default(0)
 }
 
 model DeviceSettingsMatrx {
@@ -72,4 +79,25 @@ model DeviceSettingsMatrx {
   deviceId  String @unique
 
   brightness Int
+}
+
+model LanternGroup {
+  id       Int   @id @default(autoincrement())
+  name     String
+
+  owner_id String
+  join_code String @unique @default(cuid())
+
+  createdAt DateTime @default(now())
+
+  LanternGroupDevices LanternGroupDevices[]
+}
+
+model LanternGroupDevices {
+  id       Int   @id @default(autoincrement())
+  group_id Int
+  device_id String
+
+  group LanternGroup @relation(fields: [group_id], references: [id])
+  device Device @relation(fields: [device_id], references: [id])
 }
