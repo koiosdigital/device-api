@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum DeviceType {
+  LANTERN
+  MATRX
+}
+
+model Device {
+  id        String   @id @unique
+  type      DeviceType
+
+  claims DeviceClaims[]
+  online Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  deviceSettingsCommon DeviceSettingsCommon?
+  deviceSettingsLantern DeviceSettingsLantern?
+  deviceSettingsMatrx   DeviceSettingsMatrx?
+}
+
+enum UserRole {
+  DEVICE_OWNER
+  DEVICE_SHARED_USER
+}
+
+model DeviceClaims {
+  id       Int  @id @default(autoincrement())
+  
+  device  Device @relation(fields: [deviceId], references: [id])
+  deviceId String
+
+  user_id String
+  role    UserRole
+
+  createdAt DateTime @default(now())
+}
+
+model DeviceSettingsCommon {
+  id        Int   @id @default(autoincrement())
+  device    Device   @relation(fields: [deviceId], references: [id])
+  deviceId  String @unique
+  
+  displayName String
+}
+
+model DeviceSettingsLantern {
+  id        Int   @id @default(autoincrement())
+  device    Device   @relation(fields: [deviceId], references: [id])
+  deviceId  String @unique
+
+  brightness Int
+}
+
+model DeviceSettingsMatrx {
+  id        Int   @id @default(autoincrement())
+  device    Device   @relation(fields: [deviceId], references: [id])
+  deviceId  String @unique
+
+  brightness Int
+}
