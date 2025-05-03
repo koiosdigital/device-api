@@ -1,27 +1,19 @@
-#Build stage
-FROM node:alpine AS build
+FROM node:20-slim AS base
 
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+FROM base AS prod
 WORKDIR /app
+COPY pnpm-lock.yaml /app/pnpm-lock.yaml
+RUN pnpm fetch --prod
 
-COPY package*.json .
+COPY . /app
+RUN pnpm run build
 
-RUN npm install
-
-COPY . .
-
-RUN npm run build
-
-#Production stage
-FROM node:16-alpine AS production
-
-WORKDIR /app
-
-COPY package*.json .
-
-RUN npm ci --only=production
-
-COPY --from=build /app/dist ./dist
-
-EXPOSE 3000
-
-CMD ["node", "dist/index.js"]
+FROM base
+COPY --from=prod /app/node_modules /app/node_modules
+COPY --from=prod /app/dist /app/dist
+EXPOSE 9091
+CMD [ "pnpm", "start" ]
