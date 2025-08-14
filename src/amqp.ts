@@ -12,16 +12,11 @@ export class AMQPConnection {
         else this.connected = true;
 
         try {
-            console.log(`⌛️ Connecting to RabbitMQ Server`);
             this.channelModel = await client.connect(
                 process.env.RABBITMQ_URL || ''
             );
 
-            console.log(`✅ Rabbit MQ Connection is ready`);
-
             this.channel = await this.channelModel.createChannel();
-
-            console.log(`🛸 Created RabbitMQ Channel successfully`);
         } catch (error) {
             console.error(error);
             console.error(`Not connected to MQ Server`);
@@ -34,7 +29,6 @@ export class AMQPConnection {
                 await this.connect();
             }
 
-            console.log(`🛸 Sending message to queue ${queue}: ${message}`);
             this.channel.sendToQueue(queue, Buffer.from(message));
         } catch (error) {
             console.error(error);

@@ -8,6 +8,7 @@ import { commonMessageHandler } from './common/handler';
 import { PrismaClient } from './generated/prisma';
 import { amqp } from './amqp';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
+import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
 
 const prisma = new PrismaClient();
 const port = 9091;
@@ -23,25 +24,34 @@ const app = uWSApp().ws('/', {
   maxPayloadLength: 256 * 1024, // 256KB
   idleTimeout: 10,
   upgrade: (res, req, context) => {
-    let mtlsCert = decodeURIComponent(req.getHeader('x-forwarded-tls-client-cert-info'));
     let cn = "";
-    if (mtlsCert === "") {
-      cn = decodeURIComponent(req.getHeader('x-common-name'));
-    }
 
-    if (mtlsCert === "" && cn === "") {
-      res.end('No mtlsCert found', true);
-      return;
-    }
+    // Use DEBUG_CN in non-production environments if set
+    if (process.env.NODE_ENV !== 'production' && process.env.DEBUG_CN) {
+      cn = process.env.DEBUG_CN;
+    } else {
+      // Existing certificate parsing logic
+      let mtlsCert = decodeURIComponent(req.getHeader('x-forwarded-tls-client-cert-info'));
+      if (mtlsCert === "") {
+        cn = decodeURIComponent(req.getHeader('x-common-name'));
+      }
 
-    if (cn === "") {
-      const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
-      if (!cnRes) {
-        res.end('CN not found in mtlsCert', true);
+      if (mtlsCert === "" && cn === "") {
+        res.end('No mtlsCert found', true);
         return;
       }
-      cn = cnRes[1];
+
+      if (cn === "") {
+        const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
+        if (!cnRes) {
+          res.end('CN not found in mtlsCert', true);
+          return;
+        }
+        cn = cnRes[1];
+      }
     }
+
+    console.log(`WebSocket connection request from ${cn}`);
 
     /* This immediately calls open handler, you must not use res after this call */
     res.upgrade<UserData>({
@@ -57,6 +67,8 @@ const app = uWSApp().ws('/', {
   open: async (ws: WebSocket<UserData>) => {
     const cn = ws.getUserData().certificate_cn;
     connections.set(cn, ws);
+
+    console.log(`WebSocket connection opened for ${cn}`);
 
     const type = cn.includes('LANTERN') ? 'LANTERN' : 'MATRX';
 
@@ -99,6 +111,7 @@ const app = uWSApp().ws('/', {
           return;
         }
         await lanternQueueHandler(ws, msg, prisma, amqp);
+        await amqp.channel.ack(msg);
       });
     } else if (type === 'MATRX') {
       //create matrx settings
@@ -115,7 +128,11 @@ const app = uWSApp().ws('/', {
 
       //subscribe to AMQP channels for matrx
       await amqp.registerQueueCallback(`matrx.${cn}`, async (msg) => {
-        //await matrxQueueHandler(ws, msg, prisma);
+        if (!msg) {
+          return;
+        }
+        await matrxQueueHandler(ws, msg, prisma, amqp);
+        await amqp.channel.ack(msg);
       });
     }
   },
@@ -123,6 +140,9 @@ const app = uWSApp().ws('/', {
     if (!isBinary) {
       return;
     }
+
+    console.log(`Received message from ${ws.getUserData().certificate_cn}`);
+    console.log(`Message length: ${new Uint8Array(message)}`);
 
     const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(message));
     if (!device_api_message) {
@@ -133,10 +153,11 @@ const app = uWSApp().ws('/', {
     if (device_api_message.message.case === 'kdGlobalMessage') {
       await commonMessageHandler(ws, device_api_message.message.value, prisma, amqp);
     } else if (device_api_message.message.case === 'kdMatrxMessage') {
-      console.log('Received KDMatrxMessage');
+      await matrxMessageHandler(ws, device_api_message.message.value, prisma, amqp);
     } else if (device_api_message.message.case === 'kdLanternMessage') {
       await lanternMessageHandler(ws, device_api_message.message.value, prisma, amqp);
     } else {
+      console.error(`Unknown message type: ${device_api_message.message.case}`);
       ws.close();
     }
   },

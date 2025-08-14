@@ -33,6 +33,8 @@ model Device {
   deviceSettingsMatrx   DeviceSettingsMatrx?
 
   LanternGroupDevices LanternGroupDevices[]
+  
+  MatrxApplets MatrxApplets?
 }
 
 enum UserRole {
@@ -66,11 +68,8 @@ model DeviceSettingsLantern {
   deviceId  String @unique
 
   brightness Int @default(255)
-  my_effect  Int @default(0)
-  my_red     Int @default(0)
-  my_green   Int @default(0)
-  my_blue    Int @default(0)
-  my_speed   Int @default(0)
+  sleep_start Int @default(0) //seconds after midnight
+  sleep_end   Int @default(0) //seconds after midnight
 }
 
 model DeviceSettingsMatrx {
@@ -79,6 +78,9 @@ model DeviceSettingsMatrx {
   deviceId  String @unique
 
   brightness Int
+  light_sensor_enabled Boolean @default(false) //If true, brightness will be set based on light sensor
+  sleep_start Int @default(0) //seconds after midnight
+  sleep_end   Int @default(0) //seconds after midnight
 }
 
 model LanternGroup {
@@ -98,6 +100,22 @@ model LanternGroupDevices {
   group_id Int
   device_id String
 
+  triggered_set_effect  String @default("solid") //What effect to set group when this device is triggered
+  triggered_set_color   String @default("#000000") //What color to set group when this device is triggered, if effect depends on color
+
   group LanternGroup @relation(fields: [group_id], references: [id])
   device Device @relation(fields: [device_id], references: [id])
+}
+
+model MatrxApplets {
+  id      String    @id @default(uuid())
+  deviceId String @unique
+  device   Device @relation(fields: [deviceId], references: [id])
+  createdAt DateTime @default(now())
+
+  appletData Json //JSON data for the applets, can be used to store settings or state
+  enabled Boolean @default(true) //If false, applets will not run on the device
+
+  skipped_by_user Boolean @default(false) //If true, the user has skipped the applet setup
+  pinned_by_user Boolean @default(false) //If true, the user has pinned the applet to the device
 }

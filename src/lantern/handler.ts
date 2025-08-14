@@ -18,28 +18,6 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
     const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
     ws.send(resp, true);
 
-    //get this device's settings
-    const query = await prisma.deviceSettingsLantern.findUnique({
-        where: {
-            deviceId: ws.getUserData().certificate_cn
-        },
-    });
-
-    if (!query) {
-        return;
-    }
-
-    const amqpPayload = {
-        type: "set_color",
-        red: query.my_red,
-        green: query.my_green,
-        blue: query.my_blue,
-        effect: query.my_effect,
-        speed: query.my_speed,
-        brightness: query.brightness,
-        timeout_seconds: 300,
-    }
-
     //Get all groups this device is in, and get all devices in those groups
     const query2 = await prisma.lanternGroupDevices.findMany({
         where: {
@@ -63,6 +41,32 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
     //for each group device, send the amqp message
     groupDevices.forEach(async (groupDevice) => {
         const deviceId = groupDevice.device_id;
+
+        const thisGroupDevice = query2.find((gd) => gd.device_id === deviceId);
+        if (!thisGroupDevice) {
+            return;
+        }
+
+        // Parse the triggered_set_color hex string (e.g., "#RRGGBB")
+        let r = 0, g = 0, b = 0;
+        if (typeof thisGroupDevice.triggered_set_color === "string" && /^#?[0-9A-Fa-f]{6}$/.test(thisGroupDevice.triggered_set_color)) {
+            const hex = thisGroupDevice.triggered_set_color.replace(/^#/, "");
+            r = parseInt(hex.slice(0, 2), 16);
+            g = parseInt(hex.slice(2, 4), 16);
+            b = parseInt(hex.slice(4, 6), 16);
+        }
+
+        const amqpPayload = {
+            type: "set_color",
+            red: r,
+            green: g,
+            blue: b,
+            effect: thisGroupDevice.triggered_set_effect || "none",
+            speed: 10,
+            brightness: 127,
+            timeout_seconds: 300,
+        }
+
         await amqp.sendToQueue(`lantern.${deviceId}`, JSON.stringify(amqpPayload));
     });
 }
