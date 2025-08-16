@@ -52,8 +52,8 @@ export class AMQPConnection {
                 );
             }
 
-            await this.channel.assertQueue(queue, { durable: false, autoDelete: true });
-            this.channel.consume(queue, callback, { noAck: false, consumerTag: queue });
+            await this.channel.assertQueue(queue, { durable: true, autoDelete: false });
+            await this.channel.consume(queue, callback, { noAck: false, consumerTag: queue });
             this.consumerTags.push(queue);
         } catch (error) {
             console.error(error);

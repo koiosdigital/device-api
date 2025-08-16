@@ -34,7 +34,7 @@ model Device {
 
   LanternGroupDevices LanternGroupDevices[]
   
-  MatrxApplets MatrxApplets?
+  MatrxApplets MatrxApplets[]
 }
 
 enum UserRole {
@@ -109,7 +109,7 @@ model LanternGroupDevices {
 
 model MatrxApplets {
   id      String    @id @default(uuid())
-  deviceId String @unique
+  deviceId String
   device   Device @relation(fields: [deviceId], references: [id])
   createdAt DateTime @default(now())
 
@@ -118,4 +118,6 @@ model MatrxApplets {
 
   skipped_by_user Boolean @default(false) //If true, the user has skipped the applet setup
   pinned_by_user Boolean @default(false) //If true, the user has pinned the applet to the device
+  displayTime Int @default(0) //How long the applet should be displayed in seconds, 0 means no limit
+  sortOrder Int @default(0) //Order of the applet in the list, lower numbers come first
 }

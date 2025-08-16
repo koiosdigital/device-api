@@ -1,6 +1,5 @@
 import { WebSocket } from "uWebSockets.js";
 import { UserData } from "../types";
-import { KDGlobalMessageSchema, OKResponseSchema } from "../protobufs/kd_global_pb";
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
@@ -15,6 +14,9 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
         where: {
             deviceId: ws.getUserData().certificate_cn
         },
+        orderBy: {
+            sortOrder: 'asc' // Order by sortOrder field
+        }
     });
 
     const apiResponse = create(DeviceAPIMessageSchema);
@@ -32,11 +34,9 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
             skippedByUser: applet.skipped_by_user,
             skippedByServer: false, // This can be set based on server logic
             pinned: applet.pinned_by_user,
-            displayTime: 10,
+            displayTime: applet.displayTime,
         };
     });
-
-    console.log(apiResponse);
 
     const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
     ws.send(resp, true);
@@ -44,7 +44,6 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
 
 const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: RequestRender, prisma: PrismaClient, amqp: AMQPConnection) => {
     const uuid = uuidBytesToString(message.uuid);
-    console.log(`Received render request for applet UUID: ${uuid}`);
 
     //get the applet data from the database
     const applet = await prisma.matrxApplets.findUnique({
@@ -55,7 +54,6 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
     });
 
     if (!applet) {
-        console.error(`Applet with UUID ${uuid} not found`);
         return;
     }
 
@@ -67,8 +65,8 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
         uuid: uuid,
         device: {
             id: ws.getUserData().certificate_cn,
-            width: 64,
-            height: 32,
+            width: message.width,
+            height: message.height,
         },
         params: appletData.params || {},
     }
@@ -77,17 +75,17 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
 }
 
 export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMatrxMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
-    console.log(JSON.stringify(message, null, 2));
     if (message.message.case === 'requestRender') {
         await handleRequestRenderMessage(ws, message.message.value, prisma, amqp);
     } else if (message.message.case === 'requestSchedule') {
         await handleScheduleRequestMessage(ws, message.message.value, prisma, amqp);
+    } else if (message.message.case === 'pinScheduleItem') {
+        //  await handlePinScheduleItemMessage(ws, message.message.value, prisma, amqp);
     }
 };
 
 export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: ConsumeMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
     const msg = JSON.parse(message.content.toString());
-    console.log(`Received AMQP message: ${JSON.stringify(msg)}`);
     if (msg.type === 'render_result') {
         const apiResponse = create(DeviceAPIMessageSchema);
         apiResponse.message.case = 'kdMatrxMessage';
@@ -96,10 +94,21 @@ export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: Consum
         apiResponse.message.value.message.value = create(RenderResponseSchema);
         apiResponse.message.value.message.value.uuid = uuidStringToBytes(msg.uuid);
 
-        // Convert render_data to Uint8Array, handle empty data
+        // Convert base64-encoded render_output to Uint8Array, handle empty data
         if (msg.render_output && msg.render_output.length > 0) {
-            apiResponse.message.value.message.value.spriteData = new Uint8Array(msg.render_output);
-            apiResponse.message.value.message.value.renderError = false;
+            try {
+                // Decode base64 string to binary data
+                const binaryString = atob(msg.render_output);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                apiResponse.message.value.message.value.spriteData = bytes;
+                apiResponse.message.value.message.value.renderError = false;
+            } catch (error) {
+                apiResponse.message.value.message.value.spriteData = new Uint8Array(0);
+                apiResponse.message.value.message.value.renderError = true;
+            }
         } else {
             apiResponse.message.value.message.value.spriteData = new Uint8Array(0);
             apiResponse.message.value.message.value.renderError = true;

@@ -5,7 +5,7 @@ import { UserData } from './types';
 import { fromBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
 import { commonMessageHandler } from './common/handler';
-import { PrismaClient } from './generated/prisma';
+import { DeviceType, PrismaClient } from './generated/prisma';
 import { amqp } from './amqp';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
 import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
@@ -68,9 +68,7 @@ const app = uWSApp().ws('/', {
     const cn = ws.getUserData().certificate_cn;
     connections.set(cn, ws);
 
-    console.log(`WebSocket connection opened for ${cn}`);
-
-    const type = cn.includes('LANTERN') ? 'LANTERN' : 'MATRX';
+    const type = cn.split("-")[0].toUpperCase();
 
     await prisma.device.upsert({
       where: {
@@ -78,7 +76,7 @@ const app = uWSApp().ws('/', {
       },
       create: {
         id: cn,
-        type,
+        type: type as DeviceType,
         online: true,
         deviceSettingsCommon: {
           create: {
@@ -106,12 +104,17 @@ const app = uWSApp().ws('/', {
       })
 
       //subscribe to AMQP channels for lantern
-      await amqp.registerQueueCallback(`lantern.${cn}`, async (msg) => {
+      amqp.registerQueueCallback(`lantern.${cn}`, async (msg) => {
         if (!msg) {
           return;
         }
-        await lanternQueueHandler(ws, msg, prisma, amqp);
-        await amqp.channel.ack(msg);
+
+        try {
+          await lanternQueueHandler(ws, msg, prisma, amqp);
+          await amqp.channel.ack(msg);
+        } catch (error) {
+          await amqp.channel.nack(msg);
+        }
       });
     } else if (type === 'MATRX') {
       //create matrx settings
@@ -126,13 +129,17 @@ const app = uWSApp().ws('/', {
         update: {}
       });
 
-      //subscribe to AMQP channels for matrx
-      await amqp.registerQueueCallback(`matrx.${cn}`, async (msg) => {
+      amqp.registerQueueCallback(`matrx.${cn}`, async (msg) => {
         if (!msg) {
           return;
         }
-        await matrxQueueHandler(ws, msg, prisma, amqp);
-        await amqp.channel.ack(msg);
+
+        try {
+          await matrxQueueHandler(ws, msg, prisma, amqp);
+          await amqp.channel.ack(msg);
+        } catch (error) {
+          await amqp.channel.nack(msg);
+        }
       });
     }
   },
@@ -140,9 +147,6 @@ const app = uWSApp().ws('/', {
     if (!isBinary) {
       return;
     }
-
-    console.log(`Received message from ${ws.getUserData().certificate_cn}`);
-    console.log(`Message length: ${new Uint8Array(message)}`);
 
     const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(message));
     if (!device_api_message) {

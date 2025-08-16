@@ -56,7 +56,6 @@ const handleClaimDeviceMessage = async (ws: WebSocket<UserData>, message: ClaimD
 
     //ensure claim token is valid
     try {
-        console.log('Validating claim token', claimToken);
         const subject = await validateToken(claimToken);
 
         //claim the device
