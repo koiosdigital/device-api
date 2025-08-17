@@ -5,14 +5,16 @@ import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { ConsumeMessage } from "amqplib";
 import { AMQPConnection } from "../amqp";
-import { KDMatrxMessage, KDMatrxMessageSchema, RenderResponseSchema, RequestRender, RequestSchedule, ScheduleResponseSchema } from "../protobufs/kd_matrx_pb";
+import { KDMatrxMessage, KDMatrxMessageSchema, ModifyScheduleItem, RenderResponseSchema, RequestRender, RequestSchedule, ScheduleResponseSchema } from "../protobufs/kd_matrx_pb";
 import { uuidBytesToString, uuidStringToBytes } from "./helpers";
 
 const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: RequestSchedule, prisma: PrismaClient, amqp: AMQPConnection) => {
+    const deviceId = ws.getUserData().certificate_cn;
+
     //get this device's applets
     const query = await prisma.matrxApplets.findMany({
         where: {
-            deviceId: ws.getUserData().certificate_cn
+            deviceId
         },
         orderBy: {
             sortOrder: 'asc' // Order by sortOrder field
@@ -31,8 +33,7 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
             uuid: uuidStringToBytes(applet.id),
             appletData: applet.appletData,
             enabled: applet.enabled,
-            skippedByUser: applet.skipped_by_user,
-            skippedByServer: false, // This can be set based on server logic
+            skipped: applet.skipped_by_user,
             pinned: applet.pinned_by_user,
             displayTime: applet.displayTime,
         };
@@ -44,12 +45,13 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
 
 const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: RequestRender, prisma: PrismaClient, amqp: AMQPConnection) => {
     const uuid = uuidBytesToString(message.uuid);
+    const deviceId = ws.getUserData().certificate_cn;
 
     //get the applet data from the database
     const applet = await prisma.matrxApplets.findUnique({
         where: {
             id: uuid,
-            deviceId: ws.getUserData().certificate_cn
+            deviceId
         },
     });
 
@@ -64,7 +66,7 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
         app_id: appletData.app_id,
         uuid: uuid,
         device: {
-            id: ws.getUserData().certificate_cn,
+            id: deviceId,
             width: message.width,
             height: message.height,
         },
@@ -74,13 +76,61 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
     await amqp.sendToQueue('matrx.render_requests', JSON.stringify(requestPayload));
 }
 
+const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message: ModifyScheduleItem, prisma: PrismaClient, amqp: AMQPConnection) => {
+    const uuid = uuidBytesToString(message.uuid);
+    const deviceId = ws.getUserData().certificate_cn;
+
+    const isPinning = message.pinned;
+
+    if (isPinning) {
+        await prisma.$transaction([
+            prisma.matrxApplets.updateMany({
+                where: {
+                    deviceId
+                },
+                data: {
+                    pinned_by_user: false,
+                }
+            }),
+            prisma.matrxApplets.update({
+                where: {
+                    id: uuid,
+                    deviceId
+                },
+                data: {
+                    pinned_by_user: true,
+                }
+            })
+        ]);
+        return;
+    }
+
+    await prisma.matrxApplets.update({
+        where: {
+            id: uuid,
+            deviceId
+        },
+        data: {
+            skipped_by_user: message.skipped,
+            pinned_by_user: message.pinned,
+        }
+    });
+
+    // Notify the AMQP queue about the schedule update
+    const scheduleUpdatePayload = {
+        type: 'schedule_update',
+    }
+
+    await amqp.sendToQueue(`matrx.${deviceId}`, JSON.stringify(scheduleUpdatePayload));
+}
+
 export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMatrxMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
     if (message.message.case === 'requestRender') {
         await handleRequestRenderMessage(ws, message.message.value, prisma, amqp);
     } else if (message.message.case === 'requestSchedule') {
         await handleScheduleRequestMessage(ws, message.message.value, prisma, amqp);
-    } else if (message.message.case === 'pinScheduleItem') {
-        //  await handlePinScheduleItemMessage(ws, message.message.value, prisma, amqp);
+    } else if (message.message.case === 'modifyScheduleItem') {
+        await handleModifyScheduleItemMessage(ws, message.message.value, prisma, amqp);
     }
 };
 
@@ -116,6 +166,7 @@ export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: Consum
 
         const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
         ws.send(resp, true);
-
+    } else if (msg.type === 'schedule_update') {
+        await handleScheduleRequestMessage(ws, message as unknown as RequestSchedule, prisma, amqp);
     }
 }
