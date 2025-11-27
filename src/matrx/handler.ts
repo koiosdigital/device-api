@@ -1,5 +1,5 @@
 import { WebSocketAdapter } from "../types";
-import { PrismaClient } from "../generated/prisma";
+import { PrismaClient } from "../generated/prisma/client";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { RedisConnection } from "../redis";

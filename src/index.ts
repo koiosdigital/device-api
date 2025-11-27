@@ -5,13 +5,19 @@ import { WebSocketAdapter, UserData } from './types';
 import { fromBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
 import { commonMessageHandler, handleConnect } from './common/handler';
-import { DeviceType, PrismaClient } from './generated/prisma';
+import { PrismaClient } from './generated/prisma/client';
 import { redis } from './redis';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
 import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
 import { getDefaultTypeSettings, getDeviceTypeFromCN } from './common/utils';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/mydb',
+})
+const prisma = new PrismaClient({
+  adapter
+});
 const port = 9091;
 
 

@@ -1,4 +1,4 @@
-import { DeviceType } from "../generated/prisma";
+import { DeviceType } from "../generated/prisma/enums";
 
 // Type-specific settings
 export type LanternSettings = {

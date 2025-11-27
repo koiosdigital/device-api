@@ -1,6 +1,6 @@
 import { WebSocketAdapter } from "../types";
 import { KDGlobalMessageSchema, OKResponseSchema } from "../protobufs/kd_global_pb";
-import { PrismaClient } from "../generated/prisma";
+import { PrismaClient } from "../generated/prisma/client";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { KDLanternMessage, KDLanternMessageSchema, SetColorSchema, TouchEvent } from "../protobufs/kd_lantern_pb";

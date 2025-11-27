@@ -52,13 +52,8 @@ RUN chown appuser:appuser /app
 # Install runtime dependencies
 RUN apk add --no-cache git
 
-# Copy package files for production install
-COPY --from=build --chown=appuser:appuser /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
-
-# Install only production dependencies
-RUN --mount=type=cache,id=pnpm-prod,target=/pnpm/store \
-    pnpm config set store-dir /pnpm/store && \
-    pnpm install --frozen-lockfile --prod --ignore-scripts
+# Copy node_modules from build stage (includes all Prisma dependencies)
+COPY --from=build --chown=appuser:appuser /app/node_modules ./node_modules
 ENV REDIS_URL="redis://redis:6379"
 
 # Copy built application from build stage
