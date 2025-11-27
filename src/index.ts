@@ -56,7 +56,6 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   const cn = extractCN(req);
 
   if (!cn) {
-    console.log('No CN found in request, closing connection');
     ws.close(1008, 'No CN found');
     return;
   }
@@ -65,7 +64,6 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   const wsAdapter = new WebSocketAdapter(ws, { certificate_cn: cn });
 
   const type = getDeviceTypeFromCN(cn);
-  console.log(`Device ${cn} connected (${type})`);
 
   connectedDevices.add(cn);
 
@@ -149,8 +147,6 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
 
   // Handle connection close
   ws.on('close', async () => {
-    console.log(`Device ${cn} disconnected`);
-
     connectedDevices.delete(cn);
 
     try {
@@ -173,9 +169,7 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   });
 });
 
-server.listen(port, '0.0.0.0', async () => {
-  console.log('Listening to port ' + port);
-});
+server.listen(port, '0.0.0.0');
 
 server.on('request', (req, res) => {
   if (req.url === '/health') {

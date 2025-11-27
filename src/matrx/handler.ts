@@ -83,9 +83,7 @@ const handleRequestRenderMessage = async (ws: WebSocketAdapter, message: Request
     params: appletData.params || {},
   };
 
-  console.log('About to publish render request to stream:', requestPayload);
   await publishToRenderStream(requestPayload);
-  console.log('Published render request to stream successfully');
 };
 
 const handleModifyScheduleItemMessage = async (
@@ -159,11 +157,8 @@ export const matrxQueueHandler = async (ws: WebSocketAdapter, message: any) => {
     apiResponse.message.value.message.value = create(RenderResponseSchema);
     apiResponse.message.value.message.value.uuid = uuidStringToBytes(msg.uuid);
 
-    console.log('Processing render result for UUID:', msg.uuid);
-
     // Convert base64-encoded render_output to Uint8Array, handle empty data
     if (msg.render_output && msg.render_output.length > 0) {
-      console.log('Processing render length for UUID:', msg.uuid, msg.render_output.length);
       try {
         // Decode base64 string to binary data
         const binaryString = atob(msg.render_output);

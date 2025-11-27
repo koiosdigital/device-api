@@ -28,7 +28,6 @@ export const redisSub = new Redis(process.env.REDIS_URL || 'redis://localhost:63
 export async function ensureConsumerGroup(streamKey: string, groupName: string): Promise<void> {
   try {
     await redis.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
-    console.log(`Created consumer group ${groupName} for stream ${streamKey}`);
   } catch (error: any) {
     if (error.message.includes('BUSYGROUP')) {
       // Group already exists, this is fine
@@ -40,12 +39,22 @@ export async function ensureConsumerGroup(streamKey: string, groupName: string):
 
 /**
  * Publish a message to a render request stream (work queue pattern)
+ * Automatically limits stream to last 1000 messages using approximate trimming
  */
 export async function publishToRenderStream(message: Record<string, any>): Promise<void> {
   const streamKey = 'matrx:render_requests';
   try {
-    const messageId = await redis.xadd(streamKey, '*', 'payload', JSON.stringify(message));
-    console.log(`Published to stream ${streamKey}, message ID: ${messageId}`, message);
+    // Add message with automatic trimming using MAXLEN with ~ (approximate)
+    // This is much more efficient than exact trimming
+    const messageId = await redis.xadd(
+      streamKey,
+      'MAXLEN',
+      '~',
+      '1000', // Keep approximately last 1000 messages
+      '*',
+      'payload',
+      JSON.stringify(message)
+    );
   } catch (error) {
     console.error(`Error publishing to stream ${streamKey}:`, error);
     throw error;
