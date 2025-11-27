@@ -1,7 +1,13 @@
 import type { WebSocketAdapter } from '../types';
 import { create, toBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from '../protobufs/device-api_pb';
-import { prisma, redis } from '../common/utils';
+import {
+  prisma,
+  redis,
+  uuidBytesToString,
+  uuidStringToBytes,
+  publishToRenderStream,
+} from '../common/utils';
 import {
   type KDMatrxMessage,
   KDMatrxMessageSchema,
@@ -11,7 +17,6 @@ import {
   type RequestSchedule,
   ScheduleResponseSchema,
 } from '../protobufs/kd_matrx_pb';
-import { uuidBytesToString, uuidStringToBytes } from '../common/utils';
 
 const handleScheduleRequestMessage = async (ws: WebSocketAdapter, message: RequestSchedule) => {
   const deviceId = ws.getDeviceID();
@@ -78,7 +83,9 @@ const handleRequestRenderMessage = async (ws: WebSocketAdapter, message: Request
     params: appletData.params || {},
   };
 
-  await redis.publish('matrx:render_requests', JSON.stringify(requestPayload));
+  console.log('About to publish render request to stream:', requestPayload);
+  await publishToRenderStream(requestPayload);
+  console.log('Published render request to stream successfully');
 };
 
 const handleModifyScheduleItemMessage = async (
@@ -124,7 +131,7 @@ const handleModifyScheduleItemMessage = async (
     },
   });
 
-  // Notify via Redis channel about the schedule update
+  // Notify via Redis pub/sub about the schedule update
   const scheduleUpdatePayload = {
     type: 'schedule_update',
   };

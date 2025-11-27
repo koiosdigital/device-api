@@ -22,6 +22,36 @@ export const prisma = new PrismaClient({
 export const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 export const redisSub = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
+/**
+ * Ensure a consumer group exists for a stream
+ */
+export async function ensureConsumerGroup(streamKey: string, groupName: string): Promise<void> {
+  try {
+    await redis.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
+    console.log(`Created consumer group ${groupName} for stream ${streamKey}`);
+  } catch (error: any) {
+    if (error.message.includes('BUSYGROUP')) {
+      // Group already exists, this is fine
+      return;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Publish a message to a render request stream (work queue pattern)
+ */
+export async function publishToRenderStream(message: Record<string, any>): Promise<void> {
+  const streamKey = 'matrx:render_requests';
+  try {
+    const messageId = await redis.xadd(streamKey, '*', 'payload', JSON.stringify(message));
+    console.log(`Published to stream ${streamKey}, message ID: ${messageId}`, message);
+  } catch (error) {
+    console.error(`Error publishing to stream ${streamKey}:`, error);
+    throw error;
+  }
+}
+
 // Type-specific settings
 export type LanternSettings = {
   brightness: number;

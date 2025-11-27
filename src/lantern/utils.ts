@@ -33,7 +33,7 @@ function parseEffectType(effect: string): LEDEffect {
 }
 
 /**
- * Publish a color change command to a device via Redis
+ * Publish a color change command to a device via Redis pub/sub
  */
 export async function publishColorCommand(
   deviceId: string,

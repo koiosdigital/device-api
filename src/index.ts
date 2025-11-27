@@ -72,7 +72,6 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   const channel = `device:${cn}`;
 
   const messageHandler = async (receivedChannel: string, message: string) => {
-    console.log(`Received Redis message for ${cn} on channel ${receivedChannel}`);
     if (receivedChannel !== channel) return;
 
     try {
@@ -80,7 +79,6 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
       if (type === 'LANTERN') {
         await lanternQueueHandler(wsAdapter, msg);
       } else if (type === 'MATRX') {
-        console.log('Processing MATRX Redis message');
         await matrxQueueHandler(wsAdapter, msg);
       }
     } catch (error) {
