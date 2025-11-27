@@ -1,4 +1,5 @@
 onlyBuiltDependencies:
+  - '@bufbuild/buf'
   - '@prisma/client'
   - '@prisma/engines'
   - esbuild

@@ -1,28 +1,24 @@
 
-import { createClient as createRedisClient } from 'redis';
 import { App as uWSApp, SHARED_COMPRESSOR, WebSocket } from 'uWebSockets.js';
 import { UserData } from './types';
 import { fromBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
-import { commonMessageHandler } from './common/handler';
+import { commonMessageHandler, handleConnect } from './common/handler';
 import { DeviceType, PrismaClient } from './generated/prisma';
-import { amqp } from './amqp';
+import { redis } from './redis';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
 import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
+import { getDefaultTypeSettings, getDeviceTypeFromCN } from './common/utils';
 
 const prisma = new PrismaClient();
 const port = 9091;
 
-const connections = new Map<string, WebSocket<UserData>>();
-const tlsHeaderName = process.env.NODE_ENV === 'production' ? 'x-forwarded-tls-client-cert-info' : 'x-common-name';
-
-//MARK: RabbitMQ
 
 //MARK: WebSocket Server
 const app = uWSApp().ws('/', {
   compression: SHARED_COMPRESSOR,
   maxPayloadLength: 256 * 1024, // 256KB
-  idleTimeout: 10,
+  idleTimeout: 15,
   upgrade: (res, req, context) => {
     let cn = "";
 
@@ -66,82 +62,47 @@ const app = uWSApp().ws('/', {
   },
   open: async (ws: WebSocket<UserData>) => {
     const cn = ws.getUserData().certificate_cn;
-    connections.set(cn, ws);
+    const type = getDeviceTypeFromCN(cn);
 
-    const type = cn.split("-")[0].toUpperCase();
+    console.log(`Device ${cn} connected (${type})`);
+
+    // Create or update device with unified settings
+    const defaultTypeSettings = getDefaultTypeSettings(type);
 
     await prisma.device.upsert({
-      where: {
-        id: cn
-      },
+      where: { id: cn },
       create: {
         id: cn,
-        type: type as DeviceType,
+        type,
         online: true,
-        deviceSettingsCommon: {
+        settings: {
           create: {
             displayName: cn,
+            typeSettings: defaultTypeSettings
           }
-        },
+        }
       },
       update: {
         online: true
       }
-    })
+    });
 
-    if (type === 'LANTERN') {
-      //create lantern settings
-      await prisma.deviceSettingsLantern.upsert({
-        where: {
-          deviceId: cn
-        },
-        create: {
-          deviceId: cn,
-          brightness: 100,
-        },
-        update: {
+    // Subscribe to device-specific Redis channel
+    const channel = `device:${cn}`;
+    await redis.subscribe(channel, async (message) => {
+      try {
+        const msg = JSON.parse(message);
+        if (type === 'LANTERN') {
+          await lanternQueueHandler(ws, msg, prisma, redis);
+        } else if (type === 'MATRX') {
+          await matrxQueueHandler(ws, msg, prisma, redis);
         }
-      })
+      } catch (error) {
+        console.error(`Error processing Redis message for ${cn}:`, error);
+      }
+    });
 
-      //subscribe to AMQP channels for lantern
-      amqp.registerQueueCallback(`lantern.${cn}`, async (msg) => {
-        if (!msg) {
-          return;
-        }
-
-        try {
-          await lanternQueueHandler(ws, msg, prisma, amqp);
-          await amqp.channel.ack(msg);
-        } catch (error) {
-          await amqp.channel.nack(msg);
-        }
-      });
-    } else if (type === 'MATRX') {
-      //create matrx settings
-      await prisma.deviceSettingsMatrx.upsert({
-        where: {
-          deviceId: cn
-        },
-        create: {
-          deviceId: cn,
-          brightness: 100,
-        },
-        update: {}
-      });
-
-      amqp.registerQueueCallback(`matrx.${cn}`, async (msg) => {
-        if (!msg) {
-          return;
-        }
-
-        try {
-          await matrxQueueHandler(ws, msg, prisma, amqp);
-          await amqp.channel.ack(msg);
-        } catch (error) {
-          await amqp.channel.nack(msg);
-        }
-      });
-    }
+    await handleConnect(ws, prisma);
   },
   message: async (ws: WebSocket<UserData>, message, isBinary) => {
     if (!isBinary) {
@@ -155,46 +116,39 @@ const app = uWSApp().ws('/', {
     }
 
     if (device_api_message.message.case === 'kdGlobalMessage') {
-      await commonMessageHandler(ws, device_api_message.message.value, prisma, amqp);
+      await commonMessageHandler(ws, device_api_message.message.value, prisma, redis);
     } else if (device_api_message.message.case === 'kdMatrxMessage') {
-      await matrxMessageHandler(ws, device_api_message.message.value, prisma, amqp);
+      await matrxMessageHandler(ws, device_api_message.message.value, prisma, redis);
     } else if (device_api_message.message.case === 'kdLanternMessage') {
-      await lanternMessageHandler(ws, device_api_message.message.value, prisma, amqp);
+      await lanternMessageHandler(ws, device_api_message.message.value, prisma, redis);
     } else {
-      console.error(`Unknown message type: ${device_api_message.message.case}`);
       ws.close();
     }
   },
-  drain: (ws: WebSocket<UserData>) => {
-    console.log('WebSocket backpressure: ' + ws.getBufferedAmount());
-  },
-  close: (ws: WebSocket<UserData>, code, message) => {
-    console.log('WebSocket closed');
+  close: async (ws: WebSocket<UserData>, code, message) => {
     const cn = ws.getUserData().certificate_cn;
-    connections.delete(cn);
+    const type = getDeviceTypeFromCN(cn);
 
-    prisma.device.update({
-      where: {
-        id: cn
-      },
-      data: {
-        online: false
-      }
-    })
+    console.log(`Device ${cn} disconnected`);
 
-    //deregister AMQP channels for device
-    if (cn.includes('LANTERN')) {
-      amqp.deregisterQueueCallback(`lantern.${cn}`);
+    try {
+      await prisma.device.update({
+        where: { id: cn },
+        data: { online: false }
+      });
+    } catch (error) {
+      console.error(`Error updating device ${cn} offline status:`, error);
     }
-    else if (cn.includes('MATRX')) {
-      amqp.deregisterQueueCallback(`matrx.${cn}`);
-    }
+
+    // Unsubscribe from Redis channel
+    const channel = `device:${cn}`;
+    await redis.unsubscribe(channel);
   }
 })
 
 app.listen("0.0.0.0", port, (token) => {
   if (token) {
-    amqp.connect();
+    redis.connect();
     console.log('Listening to port ' + port);
   } else {
     console.log('Failed to listen to port ' + port);

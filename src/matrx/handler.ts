@@ -3,12 +3,11 @@ import { UserData } from "../types";
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
-import { ConsumeMessage } from "amqplib";
-import { AMQPConnection } from "../amqp";
+import { RedisConnection } from "../redis";
 import { KDMatrxMessage, KDMatrxMessageSchema, ModifyScheduleItem, RenderResponseSchema, RequestRender, RequestSchedule, ScheduleResponseSchema } from "../protobufs/kd_matrx_pb";
-import { uuidBytesToString, uuidStringToBytes } from "./helpers";
+import { uuidBytesToString, uuidStringToBytes } from "../common/utils";
 
-const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: RequestSchedule, prisma: PrismaClient, amqp: AMQPConnection) => {
+const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: RequestSchedule, prisma: PrismaClient, redis: RedisConnection) => {
     const deviceId = ws.getUserData().certificate_cn;
 
     //get this device's applets
@@ -33,8 +32,8 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
             uuid: uuidStringToBytes(applet.id),
             appletData: applet.appletData,
             enabled: applet.enabled,
-            skipped: applet.skipped_by_user,
-            pinned: applet.pinned_by_user,
+            skipped: applet.skippedByUser,
+            pinned: applet.pinnedByUser,
             displayTime: applet.displayTime,
         };
     });
@@ -43,7 +42,7 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
     ws.send(resp, true);
 }
 
-const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: RequestRender, prisma: PrismaClient, amqp: AMQPConnection) => {
+const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: RequestRender, prisma: PrismaClient, redis: RedisConnection) => {
     const uuid = uuidBytesToString(message.uuid);
     const deviceId = ws.getUserData().certificate_cn;
 
@@ -73,10 +72,10 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
         params: appletData.params || {},
     }
 
-    await amqp.sendToQueue('matrx.render_requests', JSON.stringify(requestPayload));
+    await redis.publish('matrx:render_requests', JSON.stringify(requestPayload));
 }
 
-const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message: ModifyScheduleItem, prisma: PrismaClient, amqp: AMQPConnection) => {
+const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message: ModifyScheduleItem, prisma: PrismaClient, redis: RedisConnection) => {
     const uuid = uuidBytesToString(message.uuid);
     const deviceId = ws.getUserData().certificate_cn;
 
@@ -89,7 +88,7 @@ const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message:
                     deviceId
                 },
                 data: {
-                    pinned_by_user: false,
+                    pinnedByUser: false,
                 }
             }),
             prisma.matrxApplets.update({
@@ -98,7 +97,7 @@ const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message:
                     deviceId
                 },
                 data: {
-                    pinned_by_user: true,
+                    pinnedByUser: true,
                 }
             })
         ]);
@@ -111,31 +110,31 @@ const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message:
             deviceId
         },
         data: {
-            skipped_by_user: message.skipped,
-            pinned_by_user: message.pinned,
+            skippedByUser: message.skipped,
+            pinnedByUser: message.pinned,
         }
     });
 
-    // Notify the AMQP queue about the schedule update
+    // Notify via Redis channel about the schedule update
     const scheduleUpdatePayload = {
         type: 'schedule_update',
     }
 
-    await amqp.sendToQueue(`matrx.${deviceId}`, JSON.stringify(scheduleUpdatePayload));
+    await redis.publish(`device:${deviceId}`, JSON.stringify(scheduleUpdatePayload));
 }
 
-export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMatrxMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
+export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMatrxMessage, prisma: PrismaClient, redis: RedisConnection) => {
     if (message.message.case === 'requestRender') {
-        await handleRequestRenderMessage(ws, message.message.value, prisma, amqp);
+        await handleRequestRenderMessage(ws, message.message.value, prisma, redis);
     } else if (message.message.case === 'requestSchedule') {
-        await handleScheduleRequestMessage(ws, message.message.value, prisma, amqp);
+        await handleScheduleRequestMessage(ws, message.message.value, prisma, redis);
     } else if (message.message.case === 'modifyScheduleItem') {
-        await handleModifyScheduleItemMessage(ws, message.message.value, prisma, amqp);
+        await handleModifyScheduleItemMessage(ws, message.message.value, prisma, redis);
     }
 };
 
-export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: ConsumeMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
-    const msg = JSON.parse(message.content.toString());
+export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: any, prisma: PrismaClient, redis: RedisConnection) => {
+    const msg = message; // Already parsed JSON from Redis
     if (msg.type === 'render_result') {
         const apiResponse = create(DeviceAPIMessageSchema);
         apiResponse.message.case = 'kdMatrxMessage';
@@ -167,6 +166,6 @@ export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: Consum
         const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
         ws.send(resp, true);
     } else if (msg.type === 'schedule_update') {
-        await handleScheduleRequestMessage(ws, message as unknown as RequestSchedule, prisma, amqp);
+        await handleScheduleRequestMessage(ws, message as unknown as RequestSchedule, prisma, redis);
     }
 }

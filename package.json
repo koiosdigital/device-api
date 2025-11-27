@@ -1,5 +1,5 @@
 {
-  "name": "LANTERN",
+  "name": "device-api",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -14,26 +14,21 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@bufbuild/buf": "^1.53.0",
-    "@bufbuild/protoc-gen-es": "^2.2.5",
-    "@types/amqplib": "^0.10.7",
-    "@types/jsonwebtoken": "^9.0.9",
-    "@types/node": "^22.13.9",
-    "@types/node-jose": "^1.1.13",
-    "@types/uws": "^0.13.6",
+    "@bufbuild/buf": "^1.61.0",
+    "@bufbuild/protoc-gen-es": "^2.10.1",
+    "@types/node": "^24.10.1",
+    "@types/uws": "^0.13.7",
+    "dotenv": "^17.2.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.2.5",
-    "@prisma/client": "6.14.0",
-    "@types/uuid": "^10.0.0",
-    "amqplib": "^0.10.7",
-    "jsonwebtoken": "^9.0.2",
-    "node-jose": "^2.2.0",
-    "prisma": "^6.14.0",
-    "redis": "^4.7.0",
+    "@bufbuild/protobuf": "^2.10.1",
+    "@prisma/adapter-pg": "^7.0.1",
+    "@prisma/client": "7.0.1",
+    "prisma": "^7.0.1",
+    "redis": "^5.10.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.51.0"
   },
-  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
+  "packageManager": "pnpm@10.23.0+sha512.21c4e5698002ade97e4efe8b8b4a89a8de3c85a37919f957e7a0f30f38fbc5bbdd05980ffe29179b2fb6e6e691242e098d945d1601772cad0fef5fb6411e2a4b"
 }

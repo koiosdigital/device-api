@@ -5,10 +5,9 @@ import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { KDLanternMessage, KDLanternMessageSchema, SetColorSchema, TouchEvent } from "../protobufs/kd_lantern_pb";
-import { ConsumeMessage } from "amqplib";
-import { AMQPConnection } from "../amqp";
+import { RedisConnection } from "../redis";
 
-const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEvent, prisma: PrismaClient, amqp: AMQPConnection) => {
+const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEvent, prisma: PrismaClient, redis: RedisConnection) => {
     const apiResponse = create(DeviceAPIMessageSchema);
     apiResponse.message.case = 'kdGlobalMessage';
     apiResponse.message.value = create(KDGlobalMessageSchema);
@@ -21,7 +20,7 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
     //Get all groups this device is in, and get all devices in those groups
     const query2 = await prisma.lanternGroupDevices.findMany({
         where: {
-            device_id: ws.getUserData().certificate_cn
+            deviceId: ws.getUserData().certificate_cn
         },
     });
 
@@ -32,25 +31,25 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
     //for each group, get all devices in that group
     const groupDevices = await prisma.lanternGroupDevices.findMany({
         where: {
-            group_id: {
-                in: query2.map((groupDevice) => groupDevice.group_id)
+            groupId: {
+                in: query2.map((groupDevice) => groupDevice.groupId)
             }
         },
     });
 
     //for each group device, send the amqp message
     groupDevices.forEach(async (groupDevice) => {
-        const deviceId = groupDevice.device_id;
+        const deviceId = groupDevice.deviceId;
 
-        const thisGroupDevice = query2.find((gd) => gd.device_id === deviceId);
+        const thisGroupDevice = query2.find((gd) => gd.deviceId === deviceId);
         if (!thisGroupDevice) {
             return;
         }
 
-        // Parse the triggered_set_color hex string (e.g., "#RRGGBB")
+        // Parse the triggeredSetColor hex string (e.g., "#RRGGBB")
         let r = 0, g = 0, b = 0;
-        if (typeof thisGroupDevice.triggered_set_color === "string" && /^#?[0-9A-Fa-f]{6}$/.test(thisGroupDevice.triggered_set_color)) {
-            const hex = thisGroupDevice.triggered_set_color.replace(/^#/, "");
+        if (typeof thisGroupDevice.triggeredSetColor === "string" && /^#?[0-9A-Fa-f]{6}$/.test(thisGroupDevice.triggeredSetColor)) {
+            const hex = thisGroupDevice.triggeredSetColor.replace(/^#/, "");
             r = parseInt(hex.slice(0, 2), 16);
             g = parseInt(hex.slice(2, 4), 16);
             b = parseInt(hex.slice(4, 6), 16);
@@ -61,24 +60,24 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
             red: r,
             green: g,
             blue: b,
-            effect: thisGroupDevice.triggered_set_effect || "none",
+            effect: thisGroupDevice.triggeredSetEffect || "none",
             speed: 10,
             brightness: 127,
             timeout_seconds: 300,
         }
 
-        await amqp.sendToQueue(`lantern.${deviceId}`, JSON.stringify(amqpPayload));
+        await redis.publish(`device:${deviceId}`, JSON.stringify(amqpPayload));
     });
 }
 
-export const lanternMessageHandler = async (ws: WebSocket<UserData>, message: KDLanternMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
+export const lanternMessageHandler = async (ws: WebSocket<UserData>, message: KDLanternMessage, prisma: PrismaClient, redis: RedisConnection) => {
     if (message.message.case === 'touchEvent') {
-        await handleTouchEventMessage(ws, message.message.value, prisma, amqp);
+        await handleTouchEventMessage(ws, message.message.value, prisma, redis);
     }
 };
 
-export const lanternQueueHandler = async (ws: WebSocket<UserData>, message: ConsumeMessage, prisma: PrismaClient, amqp: AMQPConnection) => {
-    const msg = JSON.parse(message.content.toString());
+export const lanternQueueHandler = async (ws: WebSocket<UserData>, message: any, prisma: PrismaClient, redis: RedisConnection) => {
+    const msg = message; // Already parsed JSON from Redis
 
     if (msg.type === 'set_color') {
         const apiResponse = create(DeviceAPIMessageSchema);

@@ -10,8 +10,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
 enum DeviceType {
@@ -20,104 +19,88 @@ enum DeviceType {
 }
 
 model Device {
-  id        String   @id @unique
+  id        String     @id
   type      DeviceType
+  online    Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-  claims DeviceClaims[]
-  online Boolean @default(false)
-
-  createdAt DateTime @default(now())
-
-  deviceSettingsCommon DeviceSettingsCommon?
-  deviceSettingsLantern DeviceSettingsLantern?
-  deviceSettingsMatrx   DeviceSettingsMatrx?
-
-  LanternGroupDevices LanternGroupDevices[]
+  // Relations
+  settings DeviceSettings?
   
-  MatrxApplets MatrxApplets[]
+  // Type-specific relations
+  lanternGroupDevices LanternGroupDevices[]
+  matrxApplets        MatrxApplets[]
+
+  @@index([type])
+  @@index([online])
 }
 
-enum UserRole {
-  DEVICE_OWNER
-  DEVICE_SHARED_USER
-}
-
-model DeviceClaims {
-  id       Int  @id @default(autoincrement())
-  
-  device  Device @relation(fields: [deviceId], references: [id])
-  deviceId String
-
-  user_id String
-  role    UserRole
-
-  createdAt DateTime @default(now())
-}
-
-model DeviceSettingsCommon {
-  id        Int   @id @default(autoincrement())
-  device    Device   @relation(fields: [deviceId], references: [id])
-  deviceId  String @unique
-  
+model DeviceSettings {
+  id          Int        @id @default(autoincrement())
+  deviceId    String     @unique
   displayName String
-}
+  
+  // Type-specific settings stored as JSON with validation
+  typeSettings Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-model DeviceSettingsLantern {
-  id        Int   @id @default(autoincrement())
-  device    Device   @relation(fields: [deviceId], references: [id])
-  deviceId  String @unique
-
-  brightness Int @default(255)
-  sleep_start Int @default(0) //seconds after midnight
-  sleep_end   Int @default(0) //seconds after midnight
-}
-
-model DeviceSettingsMatrx {
-  id        Int   @id @default(autoincrement())
-  device    Device   @relation(fields: [deviceId], references: [id])
-  deviceId  String @unique
-
-  brightness Int
-  light_sensor_enabled Boolean @default(false) //If true, brightness will be set based on light sensor
-  sleep_start Int @default(0) //seconds after midnight
-  sleep_end   Int @default(0) //seconds after midnight
+  // Relations
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
 
 model LanternGroup {
-  id       Int   @id @default(autoincrement())
-  name     String
-
-  owner_id String
-  join_code String @unique @default(cuid())
-
+  id        Int      @id @default(autoincrement())
+  name      String
+  ownerId   String   @map("owner_id")
+  joinCode  String   @unique @default(cuid()) @map("join_code")
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  LanternGroupDevices LanternGroupDevices[]
+  // Relations
+  devices LanternGroupDevices[]
+
+  @@index([ownerId])
+  @@map("lantern_groups")
 }
 
 model LanternGroupDevices {
-  id       Int   @id @default(autoincrement())
-  group_id Int
-  device_id String
+  id                 Int    @id @default(autoincrement())
+  groupId            Int    @map("group_id")
+  deviceId           String @map("device_id")
+  triggeredSetEffect String @default("solid") @map("triggered_set_effect")
+  triggeredSetColor  String @default("#000000") @map("triggered_set_color")
+  createdAt          DateTime @default(now())
 
-  triggered_set_effect  String @default("solid") //What effect to set group when this device is triggered
-  triggered_set_color   String @default("#000000") //What color to set group when this device is triggered, if effect depends on color
+  // Relations
+  group  LanternGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  device Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  group LanternGroup @relation(fields: [group_id], references: [id])
-  device Device @relation(fields: [device_id], references: [id])
+  @@unique([groupId, deviceId])
+  @@index([groupId])
+  @@index([deviceId])
+  @@map("lantern_group_devices")
 }
 
 model MatrxApplets {
-  id      String    @id @default(uuid())
-  deviceId String
-  device   Device @relation(fields: [deviceId], references: [id])
-  createdAt DateTime @default(now())
+  id              String   @id @default(uuid())
+  deviceId        String
+  appletData      Json
+  enabled         Boolean  @default(true)
+  skippedByUser   Boolean  @default(false) @map("skipped_by_user")
+  pinnedByUser    Boolean  @default(false) @map("pinned_by_user")
+  displayTime     Int      @default(0) @map("display_time")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  appletData Json //JSON data for the applets, can be used to store settings or state
-  enabled Boolean @default(true) //If false, applets will not run on the device
+  // Relations
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
-  skipped_by_user Boolean @default(false) //If true, the user has skipped the applet setup
-  pinned_by_user Boolean @default(false) //If true, the user has pinned the applet to the device
-  displayTime Int @default(0) //How long the applet should be displayed in seconds, 0 means no limit
-  sortOrder Int @default(0) //Order of the applet in the list, lower numbers come first
+  @@index([deviceId])
+  @@index([deviceId, sortOrder])
+  @@index([deviceId, enabled])
+  @@map("matrx_applets")
 }
