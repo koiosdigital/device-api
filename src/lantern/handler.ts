@@ -1,5 +1,4 @@
-import { WebSocket } from "uWebSockets.js";
-import { UserData } from "../types";
+import { WebSocketAdapter } from "../types";
 import { KDGlobalMessageSchema, OKResponseSchema } from "../protobufs/kd_global_pb";
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
@@ -7,7 +6,7 @@ import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { KDLanternMessage, KDLanternMessageSchema, SetColorSchema, TouchEvent } from "../protobufs/kd_lantern_pb";
 import { RedisConnection } from "../redis";
 
-const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEvent, prisma: PrismaClient, redis: RedisConnection) => {
+const handleTouchEventMessage = async (ws: WebSocketAdapter, message: TouchEvent, prisma: PrismaClient, redis: RedisConnection) => {
     const apiResponse = create(DeviceAPIMessageSchema);
     apiResponse.message.case = 'kdGlobalMessage';
     apiResponse.message.value = create(KDGlobalMessageSchema);
@@ -70,13 +69,13 @@ const handleTouchEventMessage = async (ws: WebSocket<UserData>, message: TouchEv
     });
 }
 
-export const lanternMessageHandler = async (ws: WebSocket<UserData>, message: KDLanternMessage, prisma: PrismaClient, redis: RedisConnection) => {
+export const lanternMessageHandler = async (ws: WebSocketAdapter, message: KDLanternMessage, prisma: PrismaClient, redis: RedisConnection) => {
     if (message.message.case === 'touchEvent') {
         await handleTouchEventMessage(ws, message.message.value, prisma, redis);
     }
 };
 
-export const lanternQueueHandler = async (ws: WebSocket<UserData>, message: any, prisma: PrismaClient, redis: RedisConnection) => {
+export const lanternQueueHandler = async (ws: WebSocketAdapter, message: any, prisma: PrismaClient, redis: RedisConnection) => {
     const msg = message; // Already parsed JSON from Redis
 
     if (msg.type === 'set_color') {

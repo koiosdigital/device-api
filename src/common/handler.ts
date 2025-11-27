@@ -1,12 +1,11 @@
-import { WebSocket } from "uWebSockets.js";
-import { UserData } from "../types";
+import { WebSocketAdapter } from "../types";
 import { ErrorResponseSchema, JoinResponseSchema, KDGlobalMessage, KDGlobalMessageSchema, OKResponseSchema, UploadCoreDump } from "../protobufs/kd_global_pb";
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
 import { RedisConnection } from "../redis";
 
-export const handleConnect = async (ws: WebSocket<UserData>, prisma: PrismaClient) => {
+export const handleConnect = async (ws: WebSocketAdapter, prisma: PrismaClient) => {
     const cn = ws.getUserData().certificate_cn;
 
     const apiResponse = create(DeviceAPIMessageSchema);
@@ -21,12 +20,12 @@ export const handleConnect = async (ws: WebSocket<UserData>, prisma: PrismaClien
     ws.send(resp, true);
 }
 
-const handleCoreDumpMessage = async (ws: WebSocket<UserData>, message: UploadCoreDump, prisma: PrismaClient, redis: RedisConnection) => {
+const handleCoreDumpMessage = async (ws: WebSocketAdapter, message: UploadCoreDump, prisma: PrismaClient, redis: RedisConnection) => {
     console.log('Core dump received from device:', ws.getUserData().certificate_cn);
     // TODO: Process core dump data
 }
 
-export const commonMessageHandler = async (ws: WebSocket<UserData>, message: KDGlobalMessage, prisma: PrismaClient, redis: RedisConnection) => {
+export const commonMessageHandler = async (ws: WebSocketAdapter, message: KDGlobalMessage, prisma: PrismaClient, redis: RedisConnection) => {
     console.log(`Received global message: ${message.message.case}`);
 
     if (message.message.case === 'uploadCoreDump') {

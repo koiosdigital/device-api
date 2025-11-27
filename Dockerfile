@@ -38,6 +38,10 @@ FROM node:lts-alpine AS final
 # Enable Corepack to manage pnpm
 RUN corepack enable
 
+# Set up pnpm environment variables
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
 # Set working directory
 WORKDIR /app
 
@@ -47,7 +51,14 @@ RUN chown appuser:appuser /app
 
 # Install runtime dependencies
 RUN apk add --no-cache git
-RUN npm i dotenv prisma @prisma/client
+
+# Copy package files for production install
+COPY --from=build --chown=appuser:appuser /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+
+# Install only production dependencies
+RUN --mount=type=cache,id=pnpm-prod,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --frozen-lockfile --prod --ignore-scripts
 ENV REDIS_URL="redis://redis:6379"
 
 # Copy built application from build stage

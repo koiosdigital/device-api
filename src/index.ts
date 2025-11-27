@@ -1,6 +1,7 @@
 
-import { App as uWSApp, SHARED_COMPRESSOR, WebSocket } from 'uWebSockets.js';
-import { UserData } from './types';
+import WebSocket from 'ws';
+import { createServer, IncomingMessage } from 'http';
+import { WebSocketAdapter, UserData } from './types';
 import { fromBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
 import { commonMessageHandler, handleConnect } from './common/handler';
@@ -15,57 +16,54 @@ const port = 9091;
 
 
 //MARK: WebSocket Server
-const app = uWSApp().ws('/', {
-  compression: SHARED_COMPRESSOR,
-  maxPayloadLength: 256 * 1024, // 256KB
-  idleTimeout: 15,
-  upgrade: (res, req, context) => {
-    let cn = "";
+const server = createServer();
+const wss = new WebSocket.Server({
+  server,
+  maxPayload: 256 * 1024 // 256KB
+});
 
-    // Use DEBUG_CN in non-production environments if set
-    if (process.env.NODE_ENV !== 'production' && process.env.DEBUG_CN) {
-      cn = process.env.DEBUG_CN;
-    } else {
-      // Existing certificate parsing logic
-      let mtlsCert = decodeURIComponent(req.getHeader('x-forwarded-tls-client-cert-info'));
-      if (mtlsCert === "") {
-        cn = decodeURIComponent(req.getHeader('x-common-name'));
-      }
+// Helper function to extract CN from headers
+function extractCN(req: IncomingMessage): string | null {
+  // Use DEBUG_CN in non-production environments if set
+  if (process.env.NODE_ENV !== 'production' && process.env.DEBUG_CN) {
+    return process.env.DEBUG_CN;
+  }
 
-      if (mtlsCert === "" && cn === "") {
-        res.end('No mtlsCert found', true);
-        return;
-      }
+  // Extract from headers
+  const mtlsCert = decodeURIComponent(req.headers['x-forwarded-tls-client-cert-info'] as string || '');
+  let cn = decodeURIComponent(req.headers['x-common-name'] as string || '');
 
-      if (cn === "") {
-        const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
-        if (!cnRes) {
-          res.end('CN not found in mtlsCert', true);
-          return;
-        }
-        cn = cnRes[1];
-      }
+  if (mtlsCert === "" && cn === "") {
+    return null;
+  }
+
+  if (cn === "" && mtlsCert !== "") {
+    const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
+    if (!cnRes) {
+      return null;
     }
+    cn = cnRes[1];
+  }
 
-    console.log(`WebSocket connection request from ${cn}`);
+  return cn;
+}
 
-    /* This immediately calls open handler, you must not use res after this call */
-    res.upgrade<UserData>({
-      certificate_cn: cn,
-    },
-      req.getHeader('sec-websocket-key'),
-      req.getHeader('sec-websocket-protocol'),
-      req.getHeader('sec-websocket-extensions'),
-      context
-    );
+wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
+  const cn = extractCN(req);
 
-  },
-  open: async (ws: WebSocket<UserData>) => {
-    const cn = ws.getUserData().certificate_cn;
-    const type = getDeviceTypeFromCN(cn);
+  if (!cn) {
+    console.log('No CN found in request, closing connection');
+    ws.close(1008, 'No CN found');
+    return;
+  }
 
-    console.log(`Device ${cn} connected (${type})`);
+  // Create WebSocket adapter with user data
+  const wsAdapter = new WebSocketAdapter(ws, { certificate_cn: cn });
 
+  const type = getDeviceTypeFromCN(cn);
+  console.log(`Device ${cn} connected (${type})`);
+
+  try {
     // Create or update device with unified settings
     const defaultTypeSettings = getDefaultTypeSettings(type);
 
@@ -93,42 +91,51 @@ const app = uWSApp().ws('/', {
       try {
         const msg = JSON.parse(message);
         if (type === 'LANTERN') {
-          await lanternQueueHandler(ws, msg, prisma, redis);
+          await lanternQueueHandler(wsAdapter, msg, prisma, redis);
         } else if (type === 'MATRX') {
-          await matrxQueueHandler(ws, msg, prisma, redis);
+          await matrxQueueHandler(wsAdapter, msg, prisma, redis);
         }
       } catch (error) {
         console.error(`Error processing Redis message for ${cn}:`, error);
       }
     });
 
-    await handleConnect(ws, prisma);
-  },
-  message: async (ws: WebSocket<UserData>, message, isBinary) => {
+    await handleConnect(wsAdapter, prisma);
+  } catch (error) {
+    console.error(`Error during connection setup for ${cn}:`, error);
+    ws.close(1011, 'Server error during setup');
+    return;
+  }
+
+  // Handle incoming messages
+  ws.on('message', async (data: Buffer, isBinary: boolean) => {
     if (!isBinary) {
       return;
     }
 
-    const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(message));
-    if (!device_api_message) {
-      console.error('Failed to parse message');
-      return;
-    }
+    try {
+      const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(data));
+      if (!device_api_message) {
+        console.error('Failed to parse message');
+        return;
+      }
 
-    if (device_api_message.message.case === 'kdGlobalMessage') {
-      await commonMessageHandler(ws, device_api_message.message.value, prisma, redis);
-    } else if (device_api_message.message.case === 'kdMatrxMessage') {
-      await matrxMessageHandler(ws, device_api_message.message.value, prisma, redis);
-    } else if (device_api_message.message.case === 'kdLanternMessage') {
-      await lanternMessageHandler(ws, device_api_message.message.value, prisma, redis);
-    } else {
-      ws.close();
+      if (device_api_message.message.case === 'kdGlobalMessage') {
+        await commonMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+      } else if (device_api_message.message.case === 'kdMatrxMessage') {
+        await matrxMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+      } else if (device_api_message.message.case === 'kdLanternMessage') {
+        await lanternMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+      } else {
+        wsAdapter.close();
+      }
+    } catch (error) {
+      console.error(`Error processing message from ${cn}:`, error);
     }
-  },
-  close: async (ws: WebSocket<UserData>, code, message) => {
-    const cn = ws.getUserData().certificate_cn;
-    const type = getDeviceTypeFromCN(cn);
+  });
 
+  // Handle connection close
+  ws.on('close', async (code: number, reason: Buffer) => {
     console.log(`Device ${cn} disconnected`);
 
     try {
@@ -143,14 +150,15 @@ const app = uWSApp().ws('/', {
     // Unsubscribe from Redis channel
     const channel = `device:${cn}`;
     await redis.unsubscribe(channel);
-  }
-})
+  });
 
-app.listen("0.0.0.0", port, (token) => {
-  if (token) {
-    redis.connect();
-    console.log('Listening to port ' + port);
-  } else {
-    console.log('Failed to listen to port ' + port);
-  }
+  // Handle errors
+  ws.on('error', (error: Error) => {
+    console.error(`WebSocket error for device ${cn}:`, error);
+  });
+});
+
+server.listen(port, '0.0.0.0', () => {
+  redis.connect();
+  console.log('Listening to port ' + port);
 });

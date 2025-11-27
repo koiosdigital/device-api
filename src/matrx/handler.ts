@@ -1,5 +1,4 @@
-import { WebSocket } from "uWebSockets.js";
-import { UserData } from "../types";
+import { WebSocketAdapter } from "../types";
 import { PrismaClient } from "../generated/prisma";
 import { create, toBinary } from "@bufbuild/protobuf";
 import { DeviceAPIMessageSchema } from "../protobufs/device-api_pb";
@@ -7,7 +6,7 @@ import { RedisConnection } from "../redis";
 import { KDMatrxMessage, KDMatrxMessageSchema, ModifyScheduleItem, RenderResponseSchema, RequestRender, RequestSchedule, ScheduleResponseSchema } from "../protobufs/kd_matrx_pb";
 import { uuidBytesToString, uuidStringToBytes } from "../common/utils";
 
-const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: RequestSchedule, prisma: PrismaClient, redis: RedisConnection) => {
+const handleScheduleRequestMessage = async (ws: WebSocketAdapter, message: RequestSchedule, prisma: PrismaClient, redis: RedisConnection) => {
     const deviceId = ws.getUserData().certificate_cn;
 
     //get this device's applets
@@ -42,7 +41,7 @@ const handleScheduleRequestMessage = async (ws: WebSocket<UserData>, message: Re
     ws.send(resp, true);
 }
 
-const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: RequestRender, prisma: PrismaClient, redis: RedisConnection) => {
+const handleRequestRenderMessage = async (ws: WebSocketAdapter, message: RequestRender, prisma: PrismaClient, redis: RedisConnection) => {
     const uuid = uuidBytesToString(message.uuid);
     const deviceId = ws.getUserData().certificate_cn;
 
@@ -75,7 +74,7 @@ const handleRequestRenderMessage = async (ws: WebSocket<UserData>, message: Requ
     await redis.publish('matrx:render_requests', JSON.stringify(requestPayload));
 }
 
-const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message: ModifyScheduleItem, prisma: PrismaClient, redis: RedisConnection) => {
+const handleModifyScheduleItemMessage = async (ws: WebSocketAdapter, message: ModifyScheduleItem, prisma: PrismaClient, redis: RedisConnection) => {
     const uuid = uuidBytesToString(message.uuid);
     const deviceId = ws.getUserData().certificate_cn;
 
@@ -123,7 +122,7 @@ const handleModifyScheduleItemMessage = async (ws: WebSocket<UserData>, message:
     await redis.publish(`device:${deviceId}`, JSON.stringify(scheduleUpdatePayload));
 }
 
-export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMatrxMessage, prisma: PrismaClient, redis: RedisConnection) => {
+export const matrxMessageHandler = async (ws: WebSocketAdapter, message: KDMatrxMessage, prisma: PrismaClient, redis: RedisConnection) => {
     if (message.message.case === 'requestRender') {
         await handleRequestRenderMessage(ws, message.message.value, prisma, redis);
     } else if (message.message.case === 'requestSchedule') {
@@ -133,7 +132,7 @@ export const matrxMessageHandler = async (ws: WebSocket<UserData>, message: KDMa
     }
 };
 
-export const matrxQueueHandler = async (ws: WebSocket<UserData>, message: any, prisma: PrismaClient, redis: RedisConnection) => {
+export const matrxQueueHandler = async (ws: WebSocketAdapter, message: any, prisma: PrismaClient, redis: RedisConnection) => {
     const msg = message; // Already parsed JSON from Redis
     if (msg.type === 'render_result') {
         const apiResponse = create(DeviceAPIMessageSchema);
