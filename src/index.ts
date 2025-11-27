@@ -6,12 +6,57 @@ import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
 import { commonMessageHandler, handleConnect } from './common/handler';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
 import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
-import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from './common/utils';
+import {
+  getDefaultTypeSettings,
+  getDeviceTypeFromCN,
+  prisma,
+  redisSub,
+  redis,
+} from './common/utils';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const port = 9091;
+
+// Graceful shutdown handler
+async function shutdown(signal: string) {
+  console.log(`${signal} received, starting graceful shutdown...`);
+
+  // Close HTTP server first (stop accepting new connections)
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
+
+  // Close all WebSocket connections
+  wss.clients.forEach((client) => {
+    client.close(1001, 'Server shutting down');
+  });
+  console.log(`Closed ${wss.clients.size} WebSocket connections`);
+
+  // Disconnect Redis clients
+  try {
+    await Promise.all([redis.quit(), redisSub.quit()]);
+    console.log('Redis connections closed');
+  } catch (error) {
+    console.error('Error closing Redis connections:', error);
+  }
+
+  // Close Prisma connection
+  try {
+    await prisma.$disconnect();
+    console.log('Prisma disconnected');
+  } catch (error) {
+    console.error('Error disconnecting Prisma:', error);
+  }
+
+  console.log('Graceful shutdown complete');
+  process.exit(0);
+}
+
+// Handle shutdown signals
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 //MARK: WebSocket Server
 const server = createServer();
