@@ -20,6 +20,9 @@ importers:
       '@prisma/client-runtime-utils':
         specifier: ^7.0.1
         version: 7.0.1
+      dotenv:
+        specifier: ^17.2.3
+        version: 17.2.3
       ioredis:
         specifier: ^5.8.2
         version: 5.8.2
@@ -51,9 +54,6 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^8.48.0
         version: 8.48.0(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
-      dotenv:
-        specifier: ^17.2.3
-        version: 17.2.3
       eslint:
         specifier: ^9.39.1
         version: 9.39.1(jiti@2.6.1)
