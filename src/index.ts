@@ -1,32 +1,28 @@
-
-import WebSocket from 'ws';
-import { createServer, IncomingMessage } from 'http';
-import { WebSocketAdapter, UserData } from './types';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { createServer, type IncomingMessage } from 'http';
+import { WebSocketAdapter } from './types';
 import { fromBinary } from '@bufbuild/protobuf';
 import { DeviceAPIMessageSchema } from './protobufs/device-api_pb';
 import { commonMessageHandler, handleConnect } from './common/handler';
-import { PrismaClient } from './generated/prisma/client';
-import { redis } from './redis';
 import { lanternMessageHandler, lanternQueueHandler } from './lantern/handler';
 import { matrxMessageHandler, matrxQueueHandler } from './matrx/handler';
-import { getDefaultTypeSettings, getDeviceTypeFromCN } from './common/utils';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from './common/utils';
+import dotenv from 'dotenv';
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/mydb',
-})
-const prisma = new PrismaClient({
-  adapter
-});
+dotenv.config();
+
 const port = 9091;
-
 
 //MARK: WebSocket Server
 const server = createServer();
-const wss = new WebSocket.Server({
+
+const wss = new WebSocketServer({
   server,
-  maxPayload: 256 * 1024 // 256KB
+  maxPayload: 256 * 1024, // 256KB
 });
+
+// Track connected devices
+const connectedDevices = new Set<string>();
 
 // Helper function to extract CN from headers
 function extractCN(req: IncomingMessage): string | null {
@@ -36,14 +32,16 @@ function extractCN(req: IncomingMessage): string | null {
   }
 
   // Extract from headers
-  const mtlsCert = decodeURIComponent(req.headers['x-forwarded-tls-client-cert-info'] as string || '');
-  let cn = decodeURIComponent(req.headers['x-common-name'] as string || '');
+  const mtlsCert = decodeURIComponent(
+    (req.headers['x-forwarded-tls-client-cert-info'] as string) || ''
+  );
+  let cn = decodeURIComponent((req.headers['x-common-name'] as string) || '');
 
-  if (mtlsCert === "" && cn === "") {
+  if (mtlsCert === '' && cn === '') {
     return null;
   }
 
-  if (cn === "" && mtlsCert !== "") {
+  if (cn === '' && mtlsCert !== '') {
     const cnRes = mtlsCert.match(/CN=([a-zA-Z-_0-9]*)/);
     if (!cnRes) {
       return null;
@@ -69,6 +67,25 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   const type = getDeviceTypeFromCN(cn);
   console.log(`Device ${cn} connected (${type})`);
 
+  connectedDevices.add(cn);
+
+  const channel = `device:${cn}`;
+
+  const messageHandler = async (receivedChannel: string, message: string) => {
+    if (receivedChannel !== channel) return;
+
+    try {
+      const msg = JSON.parse(message);
+      if (type === 'LANTERN') {
+        await lanternQueueHandler(wsAdapter, msg);
+      } else if (type === 'MATRX') {
+        await matrxQueueHandler(wsAdapter, msg);
+      }
+    } catch (error) {
+      console.error(`Error processing Redis message for ${cn}:`, error);
+    }
+  };
+
   try {
     // Create or update device with unified settings
     const defaultTypeSettings = getDefaultTypeSettings(type);
@@ -82,31 +99,20 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
         settings: {
           create: {
             displayName: cn,
-            typeSettings: defaultTypeSettings
-          }
-        }
+            typeSettings: defaultTypeSettings,
+          },
+        },
       },
       update: {
-        online: true
-      }
+        online: true,
+      },
     });
 
     // Subscribe to device-specific Redis channel
-    const channel = `device:${cn}`;
-    await redis.subscribe(channel, async (message) => {
-      try {
-        const msg = JSON.parse(message);
-        if (type === 'LANTERN') {
-          await lanternQueueHandler(wsAdapter, msg, prisma, redis);
-        } else if (type === 'MATRX') {
-          await matrxQueueHandler(wsAdapter, msg, prisma, redis);
-        }
-      } catch (error) {
-        console.error(`Error processing Redis message for ${cn}:`, error);
-      }
-    });
+    redisSub.on('message', messageHandler);
+    await redisSub.subscribe(channel);
 
-    await handleConnect(wsAdapter, prisma);
+    await handleConnect(wsAdapter);
   } catch (error) {
     console.error(`Error during connection setup for ${cn}:`, error);
     ws.close(1011, 'Server error during setup');
@@ -114,24 +120,25 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   }
 
   // Handle incoming messages
-  ws.on('message', async (data: Buffer, isBinary: boolean) => {
+  ws.on('message', async (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
     if (!isBinary) {
       return;
     }
 
     try {
-      const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(data));
+      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      const device_api_message = fromBinary(DeviceAPIMessageSchema, new Uint8Array(buffer));
       if (!device_api_message) {
         console.error('Failed to parse message');
         return;
       }
 
       if (device_api_message.message.case === 'kdGlobalMessage') {
-        await commonMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+        await commonMessageHandler(wsAdapter, device_api_message.message.value);
       } else if (device_api_message.message.case === 'kdMatrxMessage') {
-        await matrxMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+        await matrxMessageHandler(wsAdapter, device_api_message.message.value);
       } else if (device_api_message.message.case === 'kdLanternMessage') {
-        await lanternMessageHandler(wsAdapter, device_api_message.message.value, prisma, redis);
+        await lanternMessageHandler(wsAdapter, device_api_message.message.value);
       } else {
         wsAdapter.close();
       }
@@ -141,21 +148,23 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   });
 
   // Handle connection close
-  ws.on('close', async (code: number, reason: Buffer) => {
+  ws.on('close', async () => {
     console.log(`Device ${cn} disconnected`);
+
+    connectedDevices.delete(cn);
 
     try {
       await prisma.device.update({
         where: { id: cn },
-        data: { online: false }
+        data: { online: false },
       });
     } catch (error) {
       console.error(`Error updating device ${cn} offline status:`, error);
     }
 
-    // Unsubscribe from Redis channel
-    const channel = `device:${cn}`;
-    await redis.unsubscribe(channel);
+    // Unsubscribe from Redis channel and remove message handler
+    redisSub.off('message', messageHandler);
+    await redisSub.unsubscribe(channel);
   });
 
   // Handle errors
@@ -164,7 +173,22 @@ wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
   });
 });
 
-server.listen(port, '0.0.0.0', () => {
-  redis.connect();
+server.listen(port, '0.0.0.0', async () => {
   console.log('Listening to port ' + port);
+});
+
+server.on('request', (req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        status: 'ok',
+        connectedDevices: connectedDevices.size,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  } else {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  }
 });

@@ -10,22 +10,24 @@ ENV PATH="$PNPM_HOME:$PATH"
 
 # Set working directory
 WORKDIR /app
-ENV DATABASE_URL="postgres://user:password@localhost:5432/dbname"
 
 # Copy package files and install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store && \
     pnpm install --frozen-lockfile --ignore-scripts
 
-# Generate Prisma client and protobuf files
+# Generate Prisma client
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+RUN pnpm prisma generate
+
+# Copy protobuf definitions and buf configuration
 COPY buf.gen.yaml buf.yaml ./
 COPY src/protobufs ./src/protobufs
-
-RUN pnpm prisma generate && \
-    pnpm run postinstall
+RUN pnpm buf generate
 
 # Copy everything else and build the application
 COPY . .
@@ -49,26 +51,16 @@ WORKDIR /app
 RUN addgroup -S appuser && adduser -S -G appuser appuser 
 RUN chown appuser:appuser /app
 
-# Install runtime dependencies
-RUN apk add --no-cache git
-
-# Copy node_modules from build stage (includes all Prisma dependencies)
-COPY --from=build --chown=appuser:appuser /app/node_modules ./node_modules
-ENV REDIS_URL="redis://redis:6379"
-
 # Copy built application from build stage
 COPY --from=build --chown=appuser:appuser /app/dist ./dist
-COPY --from=build --chown=appuser:appuser /app/src/generated ./src/generated
-COPY --from=build --chown=appuser:appuser /app/prisma ./prisma
-COPY --from=build --chown=appuser:appuser /app/package.json ./package.json
-COPY --from=build --chown=appuser:appuser /app/prisma.config.ts ./prisma.config.ts
+COPY --from=build --chown=appuser:appuser /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 
-# Copy entrypoint script
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN pnpm install --production --frozen-lockfile --ignore-scripts
 
 EXPOSE 9091
 USER appuser
 
-ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:9091/health || exit 1
+
 CMD ["node", "dist/index.js"]
