@@ -25,22 +25,25 @@ enum ClaimType {
 }
 
 model Device {
-  id        String     @id
-  type      DeviceType
-  online    Boolean    @default(false)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                                String              @id
+  type                              DeviceType
+  online                            Boolean             @default(false)
+  currentlyDisplayingInstallationId String?
+  createdAt                         DateTime            @default(now())
+  updatedAt                         DateTime            @updatedAt
 
   // Relations
-  settings DeviceSettings?
-  deviceClaims DeviceClaims[]
-  
+  settings                        DeviceSettings?
+  deviceClaims                    DeviceClaims[]
+  currentlyDisplayingInstallation MatrxInstallation?  @relation("CurrentlyDisplaying", fields: [currentlyDisplayingInstallationId], references: [id], onDelete: SetNull)
+
   // Type-specific relations
   lanternGroupDevices LanternGroupDevices[]
-  matrxApplets        MatrxApplets[]
+  installations       MatrxInstallation[] @relation("DeviceInstallations")
 
   @@index([type])
   @@index([online])
+  @@index([currentlyDisplayingInstallationId])
 }
 
 model DeviceClaims {
@@ -104,20 +107,21 @@ model LanternGroupDevices {
   @@index([deviceId])
 }
 
-model MatrxApplets {
-  id              String   @id @default(uuid())
-  deviceId        String
-  appletData      Json
-  enabled         Boolean  @default(true)
-  skippedByUser   Boolean  @default(false)
-  pinnedByUser    Boolean  @default(false)
-  displayTime     Int      @default(0)
-  sortOrder       Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+model MatrxInstallation {
+  id            String   @id @default(uuid())
+  deviceId      String
+  config        Json
+  enabled       Boolean  @default(true)
+  skippedByUser Boolean  @default(false)
+  pinnedByUser  Boolean  @default(false)
+  displayTime   Int      @default(0)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device                 Device   @relation("DeviceInstallations", fields: [deviceId], references: [id], onDelete: Cascade)
+  currentlyDisplayingFor Device[] @relation("CurrentlyDisplaying")
 
   @@index([deviceId])
   @@index([deviceId, sortOrder])

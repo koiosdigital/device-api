@@ -4,6 +4,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyResult } 
 export type AuthenticatedUser = {
   sub: string;
   username?: string;
+  name?: string;
   email?: string;
   scopes: string[];
   organizationId?: string;
@@ -41,13 +42,20 @@ export class OidcAuthService {
 
       const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ') : [];
 
+      // Parse name from various possible fields
+      const payloadRecord = payload as Record<string, string>;
+      const name =
+        payloadRecord.name ??
+        (payloadRecord.given_name && payloadRecord.family_name
+          ? `${payloadRecord.given_name} ${payloadRecord.family_name}`
+          : (payloadRecord.given_name ?? payloadRecord.family_name));
+
       return {
         sub: payload.sub ?? 'unknown',
-        username:
-          (payload as Record<string, string>).preferred_username ??
-          (payload as Record<string, string>).name,
+        username: payloadRecord.preferred_username ?? payloadRecord.username,
+        name,
         email: payload.email as string | undefined,
-        organizationId: (payload as Record<string, string>).organization_id,
+        organizationId: payloadRecord.organization_id,
         scopes,
         payload,
       };

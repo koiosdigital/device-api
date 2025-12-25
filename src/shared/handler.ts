@@ -1,8 +1,8 @@
-import type { WebSocketAdapter } from '../types';
-import type { DeviceType } from '../generated/prisma/enums';
+import type { WebSocketAdapter } from '@/shared/types';
+import type { DeviceType } from '@/generated/prisma/enums';
 import { create, toBinary } from '@bufbuild/protobuf';
-import { MatrxMessageSchema } from '../protobufs/generated/ts/kd/v1/matrx_pb';
-import { JoinResponseSchema, type UploadCoreDump } from '../protobufs/generated/ts/kd/v1/common_pb';
+import { MatrxMessageSchema } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
+import { JoinResponseSchema, type UploadCoreDump } from '@/protobufs/generated/ts/kd/v1/common_pb';
 
 type JoinResponseOptions = {
   isClaimed: boolean;

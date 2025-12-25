@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { prisma, redis, redisSub } from '../shared/utils';
-import { DeviceConnectionManager } from './connection-manager';
+import { prisma, redis, redisSub } from '@/shared/utils';
+import { DeviceConnectionManager } from '@/wss/connection-manager';
 
 export type ServerOptions = {
   port?: number;

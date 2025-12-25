@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import { startRestServer } from './rest/rest-server';
-import { startServer } from './wss/server';
+import { startRestServer } from '@/rest/rest-server';
+import { startServer } from '@/wss/server';
 
 dotenv.config();
 

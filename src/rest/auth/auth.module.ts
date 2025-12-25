@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { OidcAuthService } from './oidc-auth.service';
-import { OidcAuthGuard } from './oidc.guard';
+import { OidcAuthService } from '@/rest/auth/oidc-auth.service';
+import { OidcAuthGuard } from '@/rest/auth/oidc.guard';
 
 @Module({
   providers: [OidcAuthService, OidcAuthGuard],

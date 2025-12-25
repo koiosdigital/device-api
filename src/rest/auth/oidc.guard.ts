@@ -2,9 +2,9 @@ import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { OidcAuthService } from './oidc-auth.service';
-import type { AuthenticatedRequest } from './auth.types';
-import { IS_PUBLIC_KEY } from './public.decorator';
+import { OidcAuthService } from '@/rest/auth/oidc-auth.service';
+import type { AuthenticatedRequest } from '@/rest/auth/auth.types';
+import { IS_PUBLIC_KEY } from '@/rest/auth/public.decorator';
 
 @Injectable()
 export class OidcAuthGuard implements CanActivate {

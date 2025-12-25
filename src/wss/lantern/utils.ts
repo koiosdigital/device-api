@@ -1,4 +1,4 @@
-import type { WebSocketAdapter } from '../types';
+import type { WebSocketAdapter } from '@/shared/types';
 
 export interface SetColorMessage {
   type: 'set_color';

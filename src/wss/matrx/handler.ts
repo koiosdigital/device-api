@@ -1,4 +1,4 @@
-import type { WebSocketAdapter } from '../types';
+import type { WebSocketAdapter } from '@/shared/types';
 import { create, toBinary } from '@bufbuild/protobuf';
 import { jwtVerify } from 'jose';
 import {
@@ -6,22 +6,23 @@ import {
   type MatrxMessage,
   type ModifyScheduleItem,
   type SpriteRenderRequest,
+  type CurrentlyDisplayingUpdate,
   MatrxScheduleSchema,
   MatrxSpriteDataSchema,
   DeviceConfigSchema,
   DeviceConfigRequestSchema,
-} from '../protobufs/generated/ts/kd/v1/matrx_pb';
-import type { ClaimDevice } from '../protobufs/generated/ts/kd/v1/common_pb';
+} from '@/protobufs/generated/ts/kd/v1/matrx_pb';
+import type { ClaimDevice } from '@/protobufs/generated/ts/kd/v1/common_pb';
 import {
   prisma,
   redis,
   uuidBytesToString,
   uuidStringToBytes,
   publishToRenderStream,
-} from '../common/utils';
-import type { MatrxApplets } from '../generated/prisma/client';
-import { handleUploadCoreDump, sendJoinResponse } from '../shared/handler';
-import type { MatrxSettings } from '../shared/utils';
+} from '@/shared/utils';
+import type { MatrxInstallation } from '@/generated/prisma/client';
+import { handleUploadCoreDump, sendJoinResponse } from '@/shared/handler';
+import type { MatrxSettings } from '@/shared/utils';
 
 const getMatrxDeviceSettings = async (deviceId: string): Promise<MatrxSettings | null> => {
   const settings = await prisma.deviceSettings.findUnique({
@@ -90,24 +91,19 @@ export const sendMatrxDeviceConfigOnBoot = async (ws: WebSocketAdapter): Promise
 const handleScheduleRequestMessage = async (ws: WebSocketAdapter): Promise<void> => {
   const deviceId = ws.getDeviceID();
 
-  //get this device's applets
-  const query: MatrxApplets[] = await prisma.matrxApplets.findMany({
-    where: {
-      deviceId,
-    },
-    orderBy: {
-      sortOrder: 'asc', // Order by sortOrder field
-    },
+  const installations = await prisma.matrxInstallation.findMany({
+    where: { deviceId },
+    orderBy: { sortOrder: 'asc' },
   });
 
   const apiResponse = create(MatrxMessageSchema);
   apiResponse.message.case = 'schedule';
   apiResponse.message.value = create(MatrxScheduleSchema);
-  apiResponse.message.value.scheduleItems = query.map((applet) => ({
-    uuid: uuidStringToBytes(applet.id),
-    displayTime: applet.displayTime,
-    pinned: applet.pinnedByUser,
-    skipped: applet.skippedByUser,
+  apiResponse.message.value.scheduleItems = installations.map((installation) => ({
+    uuid: uuidStringToBytes(installation.id),
+    displayTime: installation.displayTime,
+    pinned: installation.pinnedByUser,
+    skipped: installation.skippedByUser,
     $typeName: 'kd.v1.ScheduleItem',
   }));
 
@@ -122,30 +118,29 @@ const handleSpriteRenderRequestMessage = async (
   const uuid = uuidBytesToString(message.spriteUuid);
   const deviceId = ws.getDeviceID();
 
-  //get the applet data from the database
-  const applet = await prisma.matrxApplets.findUnique({
+  const installation = await prisma.matrxInstallation.findUnique({
     where: {
       id: uuid,
       deviceId,
     },
   });
 
-  if (!applet) {
+  if (!installation) {
     return;
   }
 
-  const appletData = applet.appletData as any;
+  const config = installation.config as { app_id: string; params: Record<string, unknown> };
 
   const requestPayload = {
     type: 'render_request',
-    app_id: appletData.app_id,
-    uuid: uuid,
+    app_id: config.app_id,
+    uuid,
     device: {
       id: deviceId,
       width: message.deviceWidth,
       height: message.deviceHeight,
     },
-    params: appletData.params || {},
+    params: config.params || {},
   };
 
   await publishToRenderStream(requestPayload);
@@ -154,52 +149,36 @@ const handleSpriteRenderRequestMessage = async (
 const handleModifyScheduleItemMessage = async (
   ws: WebSocketAdapter,
   message: ModifyScheduleItem
-) => {
+): Promise<void> => {
   const uuid = uuidBytesToString(message.uuid);
   const deviceId = ws.getDeviceID();
 
-  const isPinning = message.pinned;
-
-  if (isPinning) {
+  if (message.pinned) {
     await prisma.$transaction([
-      prisma.matrxApplets.updateMany({
-        where: {
-          deviceId,
-        },
-        data: {
-          pinnedByUser: false,
-        },
+      prisma.matrxInstallation.updateMany({
+        where: { deviceId },
+        data: { pinnedByUser: false },
       }),
-      prisma.matrxApplets.update({
-        where: {
-          id: uuid,
-          deviceId,
-        },
-        data: {
-          pinnedByUser: true,
-        },
+      prisma.matrxInstallation.update({
+        where: { id: uuid, deviceId },
+        data: { pinnedByUser: true },
       }),
     ]);
     return;
   }
 
-  await prisma.matrxApplets.update({
-    where: {
-      id: uuid,
-      deviceId,
-    },
+  await prisma.matrxInstallation.update({
+    where: { id: uuid, deviceId },
     data: {
       skippedByUser: message.skipped,
       pinnedByUser: message.pinned,
     },
   });
 
-  // Notify via Redis pub/sub about the schedule update
-  const scheduleUpdatePayload = {
-    type: 'schedule_update',
-  };
-
-  await redis.publish(`device:${deviceId}`, JSON.stringify(scheduleUpdatePayload));
+  await redis.publish(
+    `device:${deviceId}`,
+    JSON.stringify({ type: 'schedule_update' })
+  );
 };
 
 const claimSecret = process.env.CLAIM_JWT_SECRET;
@@ -261,6 +240,19 @@ const handleClaimDeviceMessage = async (
   }
 };
 
+const handleCurrentlyDisplayingUpdate = async (
+  ws: WebSocketAdapter,
+  message: CurrentlyDisplayingUpdate
+): Promise<void> => {
+  const installationId = uuidBytesToString(message.installationUuid);
+  const deviceId = ws.getDeviceID();
+
+  await prisma.device.update({
+    where: { id: deviceId },
+    data: { currentlyDisplayingInstallationId: installationId },
+  });
+};
+
 export const matrxMessageHandler = async (
   ws: WebSocketAdapter,
   message: MatrxMessage
@@ -305,6 +297,9 @@ export const matrxMessageHandler = async (
       return;
     case 'claimDevice':
       await handleClaimDeviceMessage(ws, message.message.value);
+      return;
+    case 'currentlyDisplayingUpdate':
+      await handleCurrentlyDisplayingUpdate(ws, message.message.value);
       return;
     default:
       console.warn(`Unhandled Matrx message type: ${message.message.case}`);

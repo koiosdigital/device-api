@@ -1,4 +1,4 @@
-import type { WebSocketAdapter } from '../types';
+import type { WebSocketAdapter } from '@/shared/types';
 
 // TODO: Re-implement once the Lantern protobuf contract is finalized.
 export const lanternMessageHandler = async (

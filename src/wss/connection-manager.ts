@@ -1,16 +1,16 @@
 import type { IncomingMessage } from 'http';
 import type { WebSocket } from 'ws';
 import { fromBinary } from '@bufbuild/protobuf';
-import { MatrxMessageSchema } from '../protobufs/generated/ts/kd/v1/matrx_pb';
-import { WebSocketAdapter } from '../types';
-import { handleConnect } from '../shared/handler';
-import { lanternMessageHandler, lanternQueueHandler } from '../lantern/handler';
+import { MatrxMessageSchema } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
+import { WebSocketAdapter } from '@/shared/types';
+import { handleConnect } from '@/shared/handler';
+import { lanternMessageHandler, lanternQueueHandler } from '@/wss/lantern/handler';
 import {
   matrxMessageHandler,
   matrxQueueHandler,
   sendMatrxDeviceConfigOnBoot,
-} from '../matrx/handler';
-import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from '../shared/utils';
+} from '@/wss/matrx/handler';
+import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from '@/shared/utils';
 
 export class DeviceConnectionManager {
   private readonly connectedDevices: Set<string>;

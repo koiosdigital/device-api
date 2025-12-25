@@ -3,10 +3,9 @@ import 'reflect-metadata';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module';
+import { AppModule } from '@/rest/app.module';
 import {
   REST_API_DESCRIPTION,
-  REST_API_GLOBAL_PREFIX,
   REST_API_RELEASE,
   REST_API_TITLE,
   REST_API_VERSION,
@@ -24,6 +23,13 @@ export async function startRestServer(options: RestServerOptions = {}): Promise<
     bufferLogs: true,
   });
 
+  app.enableCors({
+    origin: '*',
+    methods: '*',
+    allowedHeaders: '*',
+    credentials: true,
+  });
+
   app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
@@ -31,7 +37,6 @@ export async function startRestServer(options: RestServerOptions = {}): Promise<
       transform: true,
     })
   );
-  app.setGlobalPrefix(REST_API_GLOBAL_PREFIX);
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: REST_API_VERSION,

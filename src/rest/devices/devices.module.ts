@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
-import { DevicesController } from './devices.controller';
-import { DevicesService } from './devices.service';
-import { AuthModule } from '../auth/auth.module';
+import { DevicesController } from '@/rest/devices/devices.controller';
+import { DevicesService } from '@/rest/devices/devices.service';
+import { AuthModule } from '@/rest/auth/auth.module';
+import { OwnerGuard } from '@/rest/guards/owner.guard';
+import { SharedGuard } from '@/rest/guards/shared.guard';
+import { InstallationsModule } from '@/rest/devices/installations/installations.module';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, InstallationsModule],
   controllers: [DevicesController],
-  providers: [DevicesService],
+  providers: [DevicesService, OwnerGuard, SharedGuard],
 })
 export class DevicesModule {}

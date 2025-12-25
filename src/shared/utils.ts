@@ -1,5 +1,5 @@
-import { DeviceType } from '../generated/prisma/enums';
-import { PrismaClient } from '../generated/prisma/client';
+import { DeviceType } from '@/generated/prisma/enums';
+import { PrismaClient } from '@/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import Redis from 'ioredis';
 
