@@ -2,14 +2,6 @@ import { DeviceType } from '../generated/prisma/enums';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import Redis from 'ioredis';
-import type { WebSocketAdapter } from '~/types';
-import { toBinary, create } from '@bufbuild/protobuf';
-import { DeviceAPIMessageSchema } from '~/protobufs/device-api_pb';
-import {
-  ErrorResponseSchema,
-  KDGlobalMessageSchema,
-  OKResponseSchema,
-} from '~/protobufs/kd_global_pb';
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -69,10 +61,10 @@ export type LanternSettings = {
 };
 
 export type MatrxSettings = {
-  brightness: number;
-  light_sensor_enabled: boolean;
-  sleep_start: number;
-  sleep_end: number;
+  screenEnabled: boolean;
+  screenBrightness: number;
+  autoBrightnessEnabled: boolean;
+  screenOffLux: number;
 };
 
 export type DeviceSettings = LanternSettings | MatrxSettings;
@@ -89,10 +81,10 @@ export function getDefaultTypeSettings(type: DeviceType): DeviceSettings {
     } as LanternSettings;
   } else {
     return {
-      brightness: 100,
-      light_sensor_enabled: false,
-      sleep_start: 0,
-      sleep_end: 0,
+      screenEnabled: true,
+      screenBrightness: 128,
+      autoBrightnessEnabled: false,
+      screenOffLux: 5,
     } as MatrxSettings;
   }
 }
@@ -170,34 +162,4 @@ export function parseHexColor(hexColor: string | null): {
     green: parseInt(hex.slice(2, 4), 16),
     blue: parseInt(hex.slice(4, 6), 16),
   };
-}
-
-/**
- * Send OK response back to the device
- */
-export function sendOkResponse(ws: WebSocketAdapter): void {
-  const apiResponse = create(DeviceAPIMessageSchema);
-  apiResponse.message.case = 'kdGlobalMessage';
-  apiResponse.message.value = create(KDGlobalMessageSchema);
-  apiResponse.message.value.message.case = 'okResponse';
-  apiResponse.message.value.message.value = create(OKResponseSchema);
-  apiResponse.message.value.message.value.success = true;
-
-  const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
-  ws.send(resp, true);
-}
-
-/**
- * Send error response back to the device
- */
-export function sendErrorResponse(ws: WebSocketAdapter, errorMsg: string): void {
-  const apiResponse = create(DeviceAPIMessageSchema);
-  apiResponse.message.case = 'kdGlobalMessage';
-  apiResponse.message.value = create(KDGlobalMessageSchema);
-  apiResponse.message.value.message.case = 'errorResponse';
-  apiResponse.message.value.message.value = create(ErrorResponseSchema);
-  apiResponse.message.value.message.value.errorMessage = errorMsg;
-
-  const resp = toBinary(DeviceAPIMessageSchema, apiResponse);
-  ws.send(resp, true);
 }

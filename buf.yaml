@@ -1,6 +1,6 @@
 version: v2
 modules:
-  - path: ./src/protobufs
+  - path: ./src/wss/protobufs
     lint:
       use:
         - STANDARD
