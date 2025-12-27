@@ -27,8 +27,9 @@ enum ClaimType {
 model Device {
   id                                String              @id
   type                              DeviceType
-  online                            Boolean             @default(false)
+  lastSeenAt                        DateTime?
   currentlyDisplayingInstallationId String?
+  deviceInfo                        Json?
   createdAt                         DateTime            @default(now())
   updatedAt                         DateTime            @updatedAt
 
@@ -42,7 +43,7 @@ model Device {
   installations       MatrxInstallation[] @relation("DeviceInstallations")
 
   @@index([type])
-  @@index([online])
+  @@index([lastSeenAt])
   @@index([currentlyDisplayingInstallationId])
 }
 
@@ -108,16 +109,17 @@ model LanternGroupDevices {
 }
 
 model MatrxInstallation {
-  id            String   @id @default(uuid())
-  deviceId      String
-  config        Json
-  enabled       Boolean  @default(true)
-  skippedByUser Boolean  @default(false)
-  pinnedByUser  Boolean  @default(false)
-  displayTime   Int      @default(0)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(uuid())
+  deviceId        String
+  config          Json
+  enabled         Boolean  @default(true)
+  skippedByUser   Boolean  @default(false)
+  skippedByServer Boolean  @default(false)
+  pinnedByUser    Boolean  @default(false)
+  displayTime     Int      @default(0)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
   device                 Device   @relation("DeviceInstallations", fields: [deviceId], references: [id], onDelete: Cascade)

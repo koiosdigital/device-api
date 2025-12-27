@@ -23,15 +23,25 @@ import {
   LanternDeviceResponseDto,
   MatrxDeviceResponseDto,
 } from '@/rest/devices/dto/device-response.dto';
-import { UpdateDeviceDto } from '@/rest/devices/dto/update-device.dto';
+import {
+  UpdateLanternSettingsDto,
+  UpdateMatrxSettingsDto,
+} from '@/rest/devices/dto/update-device-settings.dto';
 import { ClaimTokenResponseDto } from '@/rest/devices/dto/claim-token-response.dto';
 import type { AuthenticatedUser } from '@/rest/auth/oidc-auth.service';
 import { CurrentUser } from '@/shared/current-user.decorator';
 import { OwnerGuard } from '@/rest/guards/owner.guard';
 import { SharedGuard } from '@/rest/guards/shared.guard';
+import {
+  ApiCommonErrorResponses,
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+} from '@/rest/common';
 
 @ApiTags('Devices')
 @ApiBearerAuth()
+@ApiCommonErrorResponses()
 @ApiExtraModels(LanternDeviceResponseDto, MatrxDeviceResponseDto)
 @Controller({ path: 'devices', version: '1' })
 export class DevicesController {
@@ -98,8 +108,8 @@ export class DevicesController {
       },
     },
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Device not found' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Device not found')
   async findOne(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser
@@ -107,9 +117,13 @@ export class DevicesController {
     return this.devicesService.getDeviceForUser(id, user.sub);
   }
 
-  @Patch(':id')
+  @Patch(':id/settings')
   @UseGuards(OwnerGuard)
-  @ApiOperation({ summary: 'Update a device (owner only)' })
+  @ApiExtraModels(UpdateLanternSettingsDto, UpdateMatrxSettingsDto)
+  @ApiOperation({
+    summary: 'Update device settings (owner only)',
+    description: 'Update display name and type-specific settings. The `type` field must match the device type.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Updated device',
@@ -127,14 +141,15 @@ export class DevicesController {
       },
     },
   })
-  @ApiResponse({ status: 403, description: 'Only device owners can update' })
-  @ApiResponse({ status: 404, description: 'Device not found' })
-  async update(
+  @ApiForbiddenResponse('Only device owners can update settings')
+  @ApiNotFoundResponse('Device not found')
+  @ApiBadRequestResponse('Device type mismatch')
+  async updateSettings(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() updateDeviceDto: UpdateDeviceDto
+    @Body() dto: UpdateLanternSettingsDto | UpdateMatrxSettingsDto
   ): Promise<DeviceResponseDto> {
-    return this.devicesService.updateDevice(id, user.sub, updateDeviceDto);
+    return this.devicesService.updateSettings(id, user.sub, dto);
   }
 
   @Delete(':id')
@@ -142,8 +157,8 @@ export class DevicesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a device (owner only)' })
   @ApiResponse({ status: 204, description: 'Device deleted successfully' })
-  @ApiResponse({ status: 403, description: 'Only device owners can delete' })
-  @ApiResponse({ status: 404, description: 'Device not found' })
+  @ApiForbiddenResponse('Only device owners can delete')
+  @ApiNotFoundResponse('Device not found')
   async remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
     return this.devicesService.deleteDevice(id, user.sub);
   }

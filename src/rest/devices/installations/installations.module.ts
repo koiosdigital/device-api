@@ -4,9 +4,10 @@ import { InstallationsService } from './installations.service';
 import { MatrxRendererModule } from '@/shared/matrx-renderer/matrx-renderer.module';
 import { AuthModule } from '@/rest/auth/auth.module';
 import { SharedGuard } from '@/rest/guards/shared.guard';
+import { AppsModule } from '@/rest/apps/apps.module';
 
 @Module({
-  imports: [MatrxRendererModule, AuthModule],
+  imports: [MatrxRendererModule, AuthModule, AppsModule],
   controllers: [InstallationsController],
   providers: [InstallationsService, SharedGuard],
   exports: [InstallationsService],

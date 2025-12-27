@@ -11,6 +11,7 @@ import {
   MatrxRendererService,
   type RenderOptions,
 } from '@/shared/matrx-renderer/matrx-renderer.service';
+import { redis } from '@/shared/utils';
 import { AppManifestDto } from '@/rest/apps/dto/app-manifest.dto';
 import {
   AppSchemaDto,
@@ -24,13 +25,29 @@ import { CallSchemaHandlerResponseDto } from '@/rest/apps/dto/call-schema-handle
 import { ListAppsQueryDto } from '@/rest/apps/dto/list-apps-query.dto';
 import { PaginatedAppsResponseDto } from '@/rest/apps/dto/paginated-apps-response.dto';
 
+const CACHE_TTL_SECONDS = 300; // 5 minutes
+const REDIS_KEY_PREFIX = 'matrx-renderer:';
+
 @Injectable()
 export class AppsService {
+  private appsListCache: AppManifestDto[] | null = null;
+  private appsListCacheExpiry: number = 0;
+
   constructor(private readonly matrxRendererService: MatrxRendererService) {}
 
   async listApps(): Promise<AppManifestDto[]> {
+    const now = Date.now();
+    if (this.appsListCache && now < this.appsListCacheExpiry) {
+      return this.appsListCache;
+    }
+
     const apps = await this.safeCall(() => this.matrxRendererService.listApps());
-    return apps.map((app) => this.mapManifest(app));
+    const mapped = apps.map((app) => this.mapManifest(app));
+
+    this.appsListCache = mapped;
+    this.appsListCacheExpiry = now + CACHE_TTL_SECONDS * 1000;
+
+    return mapped;
   }
 
   async listAppsPaginated(query: ListAppsQueryDto): Promise<PaginatedAppsResponseDto> {
@@ -90,13 +107,31 @@ export class AppsService {
   }
 
   async getApp(id: string): Promise<AppManifestDto> {
+    const cacheKey = `${REDIS_KEY_PREFIX}app:${id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached) as AppManifestDto;
+    }
+
     const app = await this.safeCall(() => this.matrxRendererService.getApp(id));
-    return this.mapManifest(app);
+    const mapped = this.mapManifest(app);
+
+    await redis.setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(mapped));
+    return mapped;
   }
 
   async getSchema(id: string): Promise<AppSchemaDto> {
+    const cacheKey = `${REDIS_KEY_PREFIX}schema:${id}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached) as AppSchemaDto;
+    }
+
     const schema = await this.safeCall(() => this.matrxRendererService.getAppSchema(id));
-    return this.mapSchema(schema);
+    const mapped = this.mapSchema(schema);
+
+    await redis.setex(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(mapped));
+    return mapped;
   }
 
   async validateConfiguration(
@@ -145,7 +180,7 @@ export class AppsService {
   private mapSchema(schema: components['schemas']['AppSchema']): AppSchemaDto {
     return {
       version: schema.version,
-      schema: schema.schema.map((field) => ({ ...field })) as AppSchemaFieldDto[],
+      schema: (schema.schema?.map((field) => ({ ...field })) ?? []) as AppSchemaFieldDto[],
       notifications: schema.notifications?.map((field) => ({ ...field })) as
         | AppSchemaNotificationFieldDto[]
         | undefined,
@@ -158,14 +193,14 @@ export class AppsService {
     return {
       valid: response.valid,
       errors: response.errors ? response.errors.map((error) => ({ ...error })) : undefined,
-      normalized_config: { ...response.normalized_config },
+      normalized_config: response.normalized_config ? { ...response.normalized_config } : {},
     };
   }
 
   private mapRenderResponse(response: components['schemas']['RenderResponse']): RenderResponseDto {
     return {
       result: { ...response.result },
-      normalized_config: { ...response.normalized_config },
+      normalized_config: response.normalized_config ? { ...response.normalized_config } : {},
     };
   }
 

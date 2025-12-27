@@ -7,5 +7,6 @@ import { MatrxRendererModule } from '@/shared/matrx-renderer/matrx-renderer.modu
   imports: [MatrxRendererModule],
   controllers: [AppsController],
   providers: [AppsService],
+  exports: [AppsService],
 })
 export class AppsModule {}

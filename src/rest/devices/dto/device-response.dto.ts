@@ -64,7 +64,7 @@ export class MatrxSettingsDto {
   screenOffLux!: number;
 }
 
-// Base settings DTO
+// Base settings DTO with common fields
 export class DeviceSettingsBaseDto {
   @ApiProperty({
     description: 'Display name for the device',
@@ -72,6 +72,24 @@ export class DeviceSettingsBaseDto {
     type: String,
   })
   displayName!: string;
+
+  @ApiPropertyOptional({
+    description: 'Device display width in pixels (read-only)',
+    type: Number,
+  })
+  width?: number;
+
+  @ApiPropertyOptional({
+    description: 'Device display height in pixels (read-only)',
+    type: Number,
+  })
+  height?: number;
+
+  @ApiPropertyOptional({
+    description: 'Whether device has a light sensor (read-only)',
+    type: Boolean,
+  })
+  hasLightSensor?: boolean;
 }
 
 export class LanternDeviceSettingsDto extends DeviceSettingsBaseDto {

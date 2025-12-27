@@ -18,7 +18,7 @@ export class SharedGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user;
-    const deviceId = request.params['id'] || request.params['deviceId'];
+    const deviceId = request.params['deviceId'] || request.params['id'];
 
     if (!deviceId) {
       throw new NotFoundException('Device ID not found in request');

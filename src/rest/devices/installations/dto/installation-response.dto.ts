@@ -30,6 +30,12 @@ export class InstallationResponseDto {
   deviceId!: string;
 
   @ApiProperty({
+    description: 'App display name',
+    example: 'Weather',
+  })
+  appName!: string;
+
+  @ApiProperty({
     description: 'Whether the installation is enabled',
     example: true,
   })
@@ -40,6 +46,12 @@ export class InstallationResponseDto {
     example: false,
   })
   skippedByUser!: boolean;
+
+  @ApiProperty({
+    description: 'Whether the server skipped this installation (e.g., render errors)',
+    example: false,
+  })
+  skippedByServer!: boolean;
 
   @ApiProperty({
     description: 'Whether the user pinned this installation',

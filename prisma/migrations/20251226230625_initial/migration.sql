@@ -8,8 +8,9 @@ CREATE TYPE "ClaimType" AS ENUM ('OWNER', 'SHARED');
 CREATE TABLE "Device" (
     "id" TEXT NOT NULL,
     "type" "DeviceType" NOT NULL,
-    "online" BOOLEAN NOT NULL DEFAULT false,
+    "lastSeenAt" TIMESTAMP(3),
     "currentlyDisplayingInstallationId" TEXT,
+    "deviceInfo" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -70,6 +71,7 @@ CREATE TABLE "MatrxInstallation" (
     "config" JSONB NOT NULL,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
     "skippedByUser" BOOLEAN NOT NULL DEFAULT false,
+    "skippedByServer" BOOLEAN NOT NULL DEFAULT false,
     "pinnedByUser" BOOLEAN NOT NULL DEFAULT false,
     "displayTime" INTEGER NOT NULL DEFAULT 0,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
@@ -83,7 +85,7 @@ CREATE TABLE "MatrxInstallation" (
 CREATE INDEX "Device_type_idx" ON "Device"("type");
 
 -- CreateIndex
-CREATE INDEX "Device_online_idx" ON "Device"("online");
+CREATE INDEX "Device_lastSeenAt_idx" ON "Device"("lastSeenAt");
 
 -- CreateIndex
 CREATE INDEX "Device_currentlyDisplayingInstallationId_idx" ON "Device"("currentlyDisplayingInstallationId");

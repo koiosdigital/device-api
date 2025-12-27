@@ -285,7 +285,7 @@ export class AppSchemaDto {
   version!: string;
 
   @ApiProperty({
-    description: 'List of configurable fields',
+    description: 'List of configurable fields (empty array if no configuration required)',
     type: 'array',
     items: {
       oneOf: schemaFieldOneOf,

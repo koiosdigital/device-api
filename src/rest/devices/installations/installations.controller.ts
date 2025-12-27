@@ -11,7 +11,6 @@ import {
   HttpStatus,
   Res,
   StreamableFile,
-  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -31,10 +30,22 @@ import {
   UpdateInstallationDto,
   InstallationResponseDto,
   InstallationListItemDto,
+  BulkUpdateInstallationsDto,
+  BulkUpdateResultDto,
+  SetSkipStateDto,
+  SetPinStateDto,
+  InstallationStateResponseDto,
 } from './dto';
+import {
+  ApiCommonErrorResponses,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiValidationErrorResponse,
+} from '@/rest/common';
 
 @ApiTags('Device Installations')
 @ApiBearerAuth()
+@ApiCommonErrorResponses()
 @Controller({ path: 'devices/:deviceId/installations', version: '1' })
 @UseGuards(SharedGuard)
 export class InstallationsController {
@@ -48,8 +59,8 @@ export class InstallationsController {
     description: 'Installation created',
     type: InstallationResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiValidationErrorResponse()
   async create(
     @Param('deviceId') deviceId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -66,12 +77,31 @@ export class InstallationsController {
     description: 'List of installations (without config)',
     type: [InstallationListItemDto],
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiForbiddenResponse('Access denied')
   async findAll(
     @Param('deviceId') deviceId: string,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<InstallationListItemDto[]> {
     return this.installationsService.findAll(deviceId, user.sub);
+  }
+
+  @Patch('bulk')
+  @ApiOperation({
+    summary: 'Bulk update sort order and display times for multiple installations',
+  })
+  @ApiParam({ name: 'deviceId', description: 'Device ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Number of installations updated',
+    type: BulkUpdateResultDto,
+  })
+  @ApiForbiddenResponse('Access denied')
+  async bulkUpdate(
+    @Param('deviceId') deviceId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: BulkUpdateInstallationsDto
+  ): Promise<BulkUpdateResultDto> {
+    return this.installationsService.bulkUpdate(deviceId, user.sub, dto.installations);
   }
 
   @Get(':id')
@@ -83,8 +113,8 @@ export class InstallationsController {
     description: 'Installation details',
     type: InstallationResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Installation not found' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation not found')
   async findOne(
     @Param('deviceId') deviceId: string,
     @Param('id') id: string,
@@ -102,9 +132,9 @@ export class InstallationsController {
     description: 'Installation updated',
     type: InstallationResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Installation not found' })
-  @ApiResponse({ status: 422, description: 'Validation failed' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation not found')
+  @ApiValidationErrorResponse()
   async update(
     @Param('deviceId') deviceId: string,
     @Param('id') id: string,
@@ -120,8 +150,8 @@ export class InstallationsController {
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiParam({ name: 'id', description: 'Installation ID' })
   @ApiResponse({ status: 204, description: 'Installation deleted' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Installation not found' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation not found')
   async remove(
     @Param('deviceId') deviceId: string,
     @Param('id') id: string,
@@ -130,49 +160,53 @@ export class InstallationsController {
     return this.installationsService.delete(deviceId, id, user.sub);
   }
 
-  @Get(':id/render/:dimensions.gif')
-  @ApiProduces('image/gif')
-  @ApiOperation({ summary: 'Render installation as GIF using stored config' })
+  @Patch(':id/skip')
+  @ApiOperation({ summary: 'Set skip state for an installation' })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiParam({ name: 'id', description: 'Installation ID' })
-  @ApiParam({ name: 'dimensions', description: 'Format: WIDTHxHEIGHT', example: '64x32' })
   @ApiResponse({
     status: 200,
-    description: 'Binary GIF render',
-    content: {
-      'image/gif': {
-        schema: { type: 'string', format: 'binary' },
-      },
-    },
+    description: 'Installation state updated',
+    type: InstallationStateResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Installation not found' })
-  async renderGif(
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation not found')
+  async setSkipState(
     @Param('deviceId') deviceId: string,
     @Param('id') id: string,
-    @Param('dimensions') dimensions: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) res: Response
-  ): Promise<StreamableFile> {
-    const { width, height } = this.parseDimensions(dimensions);
-    const buffer = await this.installationsService.render(
-      deviceId,
-      id,
-      user.sub,
-      'gif',
-      width,
-      height
-    );
-    this.setImageHeaders(res, 'image/gif', buffer.length);
-    return new StreamableFile(buffer);
+    @Body() dto: SetSkipStateDto
+  ): Promise<InstallationStateResponseDto> {
+    return this.installationsService.setSkipState(deviceId, id, user.sub, dto.skipped);
   }
 
-  @Get(':id/render/:dimensions.webp')
-  @ApiProduces('image/webp')
-  @ApiOperation({ summary: 'Render installation as WebP using stored config' })
+  @Patch(':id/pin')
+  @ApiOperation({
+    summary: 'Set pin state for an installation (unpins any other pinned installation)',
+  })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiParam({ name: 'id', description: 'Installation ID' })
-  @ApiParam({ name: 'dimensions', description: 'Format: WIDTHxHEIGHT', example: '64x32' })
+  @ApiResponse({
+    status: 200,
+    description: 'Installation state updated',
+    type: InstallationStateResponseDto,
+  })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation not found')
+  async setPinState(
+    @Param('deviceId') deviceId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetPinStateDto
+  ): Promise<InstallationStateResponseDto> {
+    return this.installationsService.setPinState(deviceId, id, user.sub, dto.pinned);
+  }
+
+  @Get(':id/render.webp')
+  @ApiProduces('image/webp')
+  @ApiOperation({ summary: 'Render installation as WebP using stored config and device dimensions' })
+  @ApiParam({ name: 'deviceId', description: 'Device ID' })
+  @ApiParam({ name: 'id', description: 'Installation ID' })
   @ApiResponse({
     status: 200,
     description: 'Binary WebP render',
@@ -182,46 +216,22 @@ export class InstallationsController {
       },
     },
   })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 404, description: 'Installation not found' })
+  @ApiForbiddenResponse('Access denied')
+  @ApiNotFoundResponse('Installation or device dimensions not found')
   async renderWebp(
     @Param('deviceId') deviceId: string,
     @Param('id') id: string,
-    @Param('dimensions') dimensions: string,
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) res: Response
   ): Promise<StreamableFile> {
-    const { width, height } = this.parseDimensions(dimensions);
-    const buffer = await this.installationsService.render(
-      deviceId,
-      id,
-      user.sub,
-      'webp',
-      width,
-      height
-    );
+    const buffer = await this.installationsService.render(deviceId, id, user.sub);
     this.setImageHeaders(res, 'image/webp', buffer.length);
     return new StreamableFile(buffer);
   }
 
-  private parseDimensions(dimensions: string): { width: number; height: number } {
-    const [widthStr, heightStr] = dimensions.split('x');
-    const width = this.toPositiveInteger(widthStr, 'width');
-    const height = this.toPositiveInteger(heightStr, 'height');
-    return { width, height };
-  }
-
-  private toPositiveInteger(value: string, name: string): number {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new BadRequestException(`${name} must be a positive integer`);
-    }
-    return parsed;
-  }
-
   private setImageHeaders(res: Response, contentType: string, length: number) {
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('Cache-Control', 'public, max-age=10'); // 10 seconds
     res.setHeader('Content-Length', length.toString());
   }
 }

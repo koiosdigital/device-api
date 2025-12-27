@@ -18,8 +18,17 @@ export class WebSocketAdapter {
     return this.userData.certificate_cn;
   }
 
-  send(data: ArrayBuffer | Uint8Array, isBinary = true): void {
+  send(data: ArrayBuffer | Uint8Array, isBinary = true): boolean {
+    if (this.ws.readyState !== 1) {
+      // WebSocket.OPEN = 1
+      return false;
+    }
     this.ws.send(data, { binary: isBinary });
+    return true;
+  }
+
+  isOpen(): boolean {
+    return this.ws.readyState === 1; // WebSocket.OPEN
   }
 
   close(code?: number, message?: string): void {

@@ -9,6 +9,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common';
+import { Public } from '@/rest/auth/public.decorator';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -18,7 +19,6 @@ import {
   ApiQuery,
   ApiResponse,
   ApiTags,
-  getSchemaPath,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AppsService } from '@/rest/apps/apps.service';
@@ -40,6 +40,12 @@ import {
 import type { RenderOptions } from '@/shared/matrx-renderer/matrx-renderer.service';
 import { ListAppsQueryDto } from '@/rest/apps/dto/list-apps-query.dto';
 import { PaginatedAppsResponseDto } from '@/rest/apps/dto/paginated-apps-response.dto';
+import {
+  ApiCommonErrorResponses,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiValidationErrorResponse,
+} from '@/rest/common';
 
 const APP_CONFIG_SCHEMA = {
   type: 'object',
@@ -53,6 +59,7 @@ const APP_CONFIG_SCHEMA = {
 
 @ApiTags('Apps')
 @ApiBearerAuth()
+@ApiCommonErrorResponses()
 @ApiExtraModels(
   AppSchemaDto,
   AppSchemaFieldBaseDto,
@@ -81,7 +88,7 @@ export class AppsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get details for a specific app' })
   @ApiResponse({ status: 200, description: 'App details', type: AppManifestDto })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiNotFoundResponse('App not found')
   async getApp(@Param('id') id: string): Promise<AppManifestDto> {
     return this.appsService.getApp(id);
   }
@@ -89,11 +96,12 @@ export class AppsController {
   @Get(':id/schema')
   @ApiOperation({ summary: 'Fetch the schema definition for an app' })
   @ApiResponse({ status: 200, description: 'App schema', type: AppSchemaDto })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiNotFoundResponse('App not found')
   async getSchema(@Param('id') id: string): Promise<AppSchemaDto> {
     return this.appsService.getSchema(id);
   }
 
+  @Public()
   @Get(':id/preview/:dimensions.webp')
   @ApiProduces('image/webp')
   @ApiOperation({ summary: 'Generate a static WebP preview using schema defaults' })
@@ -112,7 +120,8 @@ export class AppsController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiNotFoundResponse('App not found')
+  @ApiBadRequestResponse('Invalid dimensions')
   async previewWebp(
     @Param('id') id: string,
     @Param('dimensions') dimensions: string,
@@ -130,6 +139,7 @@ export class AppsController {
     return new StreamableFile(buffer);
   }
 
+  @Public()
   @Get(':id/preview/:dimensions.gif')
   @ApiProduces('image/gif')
   @ApiOperation({ summary: 'Generate a static GIF preview using schema defaults' })
@@ -148,7 +158,8 @@ export class AppsController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiNotFoundResponse('App not found')
+  @ApiBadRequestResponse('Invalid dimensions')
   async previewGif(
     @Param('id') id: string,
     @Param('dimensions') dimensions: string,
@@ -184,12 +195,8 @@ export class AppsController {
   })
   @ApiBody({ schema: APP_CONFIG_SCHEMA })
   @ApiResponse({ status: 200, description: 'Render result', type: RenderResponseDto })
-  @ApiResponse({
-    status: 422,
-    description: 'Validation failed',
-    schema: { $ref: getSchemaPath(ValidateSchemaResponseDto) },
-  })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiValidationErrorResponse()
+  @ApiNotFoundResponse('App not found')
   async renderApp(
     @Param('id') id: string,
     @Body() config: Record<string, unknown>,
@@ -205,7 +212,7 @@ export class AppsController {
   @ApiOperation({ summary: 'Validate a configuration object against the schema' })
   @ApiBody({ schema: APP_CONFIG_SCHEMA })
   @ApiResponse({ status: 200, description: 'Validation result', type: ValidateSchemaResponseDto })
-  @ApiResponse({ status: 404, description: 'App not found' })
+  @ApiNotFoundResponse('App not found')
   async validateConfig(
     @Param('id') id: string,
     @Body() config: Record<string, unknown>
@@ -217,7 +224,7 @@ export class AppsController {
   @ApiOperation({ summary: 'Invoke a Pixlet schema handler' })
   @ApiBody({ type: CallSchemaHandlerRequestDto })
   @ApiResponse({ status: 200, description: 'Handler result', type: CallSchemaHandlerResponseDto })
-  @ApiResponse({ status: 404, description: 'App or handler not found' })
+  @ApiNotFoundResponse('App or handler not found')
   async callSchemaHandler(
     @Param('id') id: string,
     @Body() payload: CallSchemaHandlerRequestDto
@@ -260,7 +267,7 @@ export class AppsController {
 
   private setPreviewHeaders(res: Response, contentType: string, length: number) {
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
     res.setHeader('Content-Length', length.toString());
   }
 }

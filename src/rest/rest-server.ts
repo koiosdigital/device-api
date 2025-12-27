@@ -4,6 +4,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '@/rest/app.module';
+import { HttpExceptionFilter } from '@/rest/common/filters';
 import {
   REST_API_DESCRIPTION,
   REST_API_RELEASE,
@@ -31,10 +32,12 @@ export async function startRestServer(options: RestServerOptions = {}): Promise<
   });
 
   app.enableShutdownHooks();
+  app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
+      transformOptions: { enableImplicitConversion: true },
     })
   );
   app.enableVersioning({

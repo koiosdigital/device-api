@@ -11,46 +11,39 @@ export const prisma = new PrismaClient({
   adapter,
 });
 
-export const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
-export const redisSub = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+export const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => Math.min(times * 100, 3000),
+});
+
+export const redisSub = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  maxRetriesPerRequest: 3,
+  retryStrategy: (times) => Math.min(times * 100, 3000),
+});
+
+// Log Redis connection events for debugging
+redis.on('error', (err) => console.error('Redis error:', err.message));
+redis.on('connect', () => console.log('Redis connected'));
+redis.on('reconnecting', () => console.log('Redis reconnecting...'));
+
+redisSub.on('error', (err) => console.error('Redis sub error:', err.message));
+redisSub.on('connect', () => console.log('Redis sub connected'));
+redisSub.on('reconnecting', () => console.log('Redis sub reconnecting...'));
+redisSub.on('end', () => console.error('Redis sub connection ended'));
+redisSub.on('close', () => console.error('Redis sub connection closed'));
 
 /**
- * Ensure a consumer group exists for a stream
+ * Notify device to refresh its schedule (installations changed)
  */
-export async function ensureConsumerGroup(streamKey: string, groupName: string): Promise<void> {
-  try {
-    await redis.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
-  } catch (error: any) {
-    if (error.message.includes('BUSYGROUP')) {
-      // Group already exists, this is fine
-      return;
-    }
-    throw error;
-  }
+export async function notifyScheduleUpdate(deviceId: string): Promise<void> {
+  await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'schedule_update' }));
 }
 
 /**
- * Publish a message to a render request stream (work queue pattern)
- * Automatically limits stream to last 1000 messages using approximate trimming
+ * Notify device to refresh its settings from database
  */
-export async function publishToRenderStream(message: Record<string, any>): Promise<void> {
-  const streamKey = 'matrx:render_requests';
-  try {
-    // Add message with automatic trimming using MAXLEN with ~ (approximate)
-    // This is much more efficient than exact trimming
-    const messageId = await redis.xadd(
-      streamKey,
-      'MAXLEN',
-      '~',
-      '1000', // Keep approximately last 1000 messages
-      '*',
-      'payload',
-      JSON.stringify(message)
-    );
-  } catch (error) {
-    console.error(`Error publishing to stream ${streamKey}:`, error);
-    throw error;
-  }
+export async function notifySettingsUpdate(deviceId: string): Promise<void> {
+  await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'settings_update' }));
 }
 
 // Type-specific settings
