@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import type { Device, DeviceSettings, DeviceClaims } from '@/generated/prisma/client';
 import { Prisma } from '@/generated/prisma/client';
 import { ClaimType, DeviceType } from '@/generated/prisma/enums';
-import { prisma, notifySettingsUpdate } from '@/shared/utils';
+import { prisma, notifySettingsUpdate, notifyFactoryReset } from '@/shared/utils';
 import { SignJWT } from 'jose';
 import type {
   DeviceResponseDto,
@@ -143,6 +143,9 @@ export class DevicesService {
     if (!claim) {
       throw new NotFoundException(`Device ${deviceId} not found or not owned by user`);
     }
+
+    // Notify device to factory reset before deleting
+    await notifyFactoryReset(deviceId, 'Device deleted by owner');
 
     // Delete the device (cascade will handle related records)
     await prisma.device.delete({

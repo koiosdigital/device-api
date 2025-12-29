@@ -40,7 +40,8 @@ model Device {
 
   // Type-specific relations
   lanternGroupDevices LanternGroupDevices[]
-  installations       MatrxInstallation[] @relation("DeviceInstallations")
+  installations       MatrxInstallation[]      @relation("DeviceInstallations")
+  shareInvites        DeviceShareInvite[]
 
   @@index([type])
   @@index([lastSeenAt])
@@ -128,4 +129,22 @@ model MatrxInstallation {
   @@index([deviceId])
   @@index([deviceId, sortOrder])
   @@index([deviceId, enabled])
+}
+
+model DeviceShareInvite {
+  id          String   @id @default(uuid())
+  deviceId    String
+  inviterId   String   // User who created the invite
+  targetEmail String   // Email address the invite was sent to
+  expiresAt   DateTime // When the invite expires (24h from creation)
+  acceptedAt  DateTime? // When the invite was accepted (null if pending)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, targetEmail]) // One active invite per device per email
+  @@index([deviceId])
+  @@index([targetEmail])
+  @@index([expiresAt])
 }

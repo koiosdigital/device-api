@@ -179,19 +179,33 @@ export class DeviceConnectionManager {
       })();
     });
 
-    ws.on('ping', async () => {
+    ws.on('ping', () => {
+      // ws library automatically sends pong, but log for debugging
+      console.log(`[ws] ping received device=${deviceId}`);
       // Update lastSeenAt on ping frames (device keepalive)
-      try {
-        await prisma.device.update({
+      prisma.device
+        .update({
           where: { id: deviceId },
           data: { lastSeenAt: new Date() },
+        })
+        .catch((error) => {
+          console.error(`Error updating lastSeenAt on ping for ${deviceId}:`, error);
         });
-      } catch (error) {
-        console.error(`Error updating lastSeenAt on ping for ${deviceId}:`, error);
-      }
     });
 
+    ws.on('pong', () => {
+      console.log(`[ws] pong received device=${deviceId}`);
+    });
+
+    // Server-side keepalive: ping device every 30 seconds
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === ws.OPEN) {
+        ws.ping();
+      }
+    }, 30000);
+
     const cleanup = async () => {
+      clearInterval(pingInterval);
       this.connectedDevices.delete(deviceId);
       this.deviceHandlers.delete(deviceId);
       redisSub.off('message', messageHandler);

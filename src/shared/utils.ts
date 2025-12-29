@@ -36,14 +36,30 @@ redisSub.on('close', () => console.error('Redis sub connection closed'));
  * Notify device to refresh its schedule (installations changed)
  */
 export async function notifyScheduleUpdate(deviceId: string): Promise<void> {
-  await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'schedule_update' }));
+  const channel = `device:${deviceId}`;
+  const message = JSON.stringify({ type: 'schedule_update' });
+  const subscribers = await redis.publish(channel, message);
+  console.log(`[notify] schedule_update device=${deviceId} subscribers=${subscribers}`);
 }
 
 /**
  * Notify device to refresh its settings from database
  */
 export async function notifySettingsUpdate(deviceId: string): Promise<void> {
-  await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'settings_update' }));
+  const channel = `device:${deviceId}`;
+  const message = JSON.stringify({ type: 'settings_update' });
+  const subscribers = await redis.publish(channel, message);
+  console.log(`[notify] settings_update device=${deviceId} subscribers=${subscribers}`);
+}
+
+/**
+ * Notify device to perform factory reset
+ */
+export async function notifyFactoryReset(deviceId: string, reason?: string): Promise<void> {
+  const channel = `device:${deviceId}`;
+  const message = JSON.stringify({ type: 'factory_reset', reason: reason || 'Device deleted by owner' });
+  const subscribers = await redis.publish(channel, message);
+  console.log(`[notify] factory_reset device=${deviceId} subscribers=${subscribers}`);
 }
 
 // Type-specific settings

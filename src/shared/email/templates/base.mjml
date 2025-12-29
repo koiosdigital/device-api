@@ -1,0 +1,59 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{title}}</mj-title>
+    <mj-preview>{{preview}}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" />
+      <mj-text font-size="14px" line-height="1.6" color="#374151" />
+      <mj-button font-size="14px" font-weight="600" inner-padding="12px 24px" border-radius="8px" />
+    </mj-attributes>
+    <mj-style>
+      .footer-link { color: #6B7280 !important; text-decoration: none; }
+      .footer-link:hover { text-decoration: underline; }
+    </mj-style>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <!-- Header -->
+    <mj-section padding="40px 0 20px 0">
+      <mj-column>
+        <mj-text align="center" font-size="24px" font-weight="700" color="#111827">
+          {{appName}}
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+    <!-- Main Content Card -->
+    <mj-section background-color="#ffffff" border-radius="12px" padding="32px 24px">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600" color="#111827" padding-bottom="16px">
+          {{heading}}
+        </mj-text>
+        <mj-text padding-bottom="24px">
+          {{{body}}}
+        </mj-text>
+        {{#if buttonUrl}}
+        <mj-button href="{{buttonUrl}}" background-color="#4F46E5" color="#ffffff">
+          {{buttonText}}
+        </mj-button>
+        {{/if}}
+        {{#if secondaryText}}
+        <mj-text padding-top="24px" font-size="13px" color="#6B7280">
+          {{{secondaryText}}}
+        </mj-text>
+        {{/if}}
+      </mj-column>
+    </mj-section>
+
+    <!-- Footer -->
+    <mj-section padding="24px 0 40px 0">
+      <mj-column>
+        <mj-text align="center" font-size="12px" color="#9CA3AF">
+          {{footerText}}
+        </mj-text>
+        <mj-text align="center" font-size="12px" color="#9CA3AF" padding-top="8px">
+          &copy; {{year}} {{appName}}. All rights reserved.
+        </mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>
