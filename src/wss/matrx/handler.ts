@@ -1,5 +1,6 @@
 import type { WebSocketAdapter } from '@/shared/types';
 import { create, toBinary } from '@bufbuild/protobuf';
+import { createHash } from 'crypto';
 import { jwtVerify } from 'jose';
 import createClient from 'openapi-fetch';
 import type { paths } from '@/generated/matrx-renderer';
@@ -23,7 +24,7 @@ import {
 import { prisma, redis, uuidBytesToString, uuidStringToBytes } from '@/shared/utils';
 import { handleUploadCoreDump, sendJoinResponse } from '@/shared/handler';
 import type { MatrxSettings } from '@/shared/utils';
-import { handleRenewCertRequest } from '@/wss/pki';
+import { handleCertReport, handleCertRenewRequest } from '@/wss/pki';
 import { LoggerService } from '@/shared/logger';
 
 const logger = new LoggerService();
@@ -169,7 +170,7 @@ const handleAppRenderRequestMessage = async (
     const bytes = Buffer.from(renderOutput, 'base64');
 
     // SHA256 of appData
-    const hash = require('crypto').createHash('sha256').update(bytes).digest();
+    const hash = createHash('sha256').update(bytes).digest();
 
     // Skip sending if device already has this exact render
     if (
@@ -422,8 +423,11 @@ export const matrxMessageHandler = async (
     case 'deviceInfo':
       await handleDeviceInfoMessage(ws, message.message.value);
       return;
-    case 'renewCertRequest':
-      await handleRenewCertRequest(ws, message.message.value);
+    case 'certReport':
+      await handleCertReport(ws, message.message.value);
+      return;
+    case 'certRenewRequest':
+      await handleCertRenewRequest(ws, message.message.value);
       return;
     default:
       logger.warn(`Unhandled Matrx message type: ${message.message.case}`);
