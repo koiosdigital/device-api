@@ -11,21 +11,25 @@ import {
   sendMatrxDeviceConfigOnBoot,
 } from '@/wss/matrx/handler';
 import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from '@/shared/utils';
+import { LoggerService } from '@/shared/logger';
 
 export class DeviceConnectionManager {
   private readonly connectedDevices: Set<string>;
   private readonly deviceHandlers: Map<string, (channel: string, message: string) => void>;
+  private readonly logger: LoggerService;
 
-  constructor(deps: { connectedDevices: Set<string> }) {
+  constructor(deps: { connectedDevices: Set<string>; logger?: LoggerService }) {
     this.connectedDevices = deps.connectedDevices;
     this.deviceHandlers = new Map();
+    this.logger = deps.logger ?? new LoggerService();
+    this.logger.setContext('ConnectionManager');
   }
 
   public async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
     let cn = this.extractCN(req);
 
     if (!cn) {
-      cn = 'MATRX-B43A45B0C418';
+      cn = process.env.DEBUG_CN || '';
     }
 
     const wsAdapter = new WebSocketAdapter(ws, { certificate_cn: cn });
@@ -35,7 +39,7 @@ export class DeviceConnectionManager {
 
     // If device already connected, clean up old handler first
     if (this.connectedDevices.has(cn)) {
-      console.log(`[ws] cleaning up stale connection device=${cn}`);
+      this.logger.warn(`Cleaning up stale connection device=${cn}`);
       const oldHandler = this.deviceHandlers.get(cn);
       if (oldHandler) {
         redisSub.off('message', oldHandler);
@@ -49,7 +53,7 @@ export class DeviceConnectionManager {
     const messageHandler = this.createRedisMessageHandler(type, channel, wsAdapter);
     this.deviceHandlers.set(cn, messageHandler);
 
-    console.log(`[ws] new connection device=${cn} type=${type}`);
+    this.logger.log(`New connection device=${cn} type=${type}`);
 
     try {
       const defaultTypeSettings = getDefaultTypeSettings(type);
@@ -74,7 +78,7 @@ export class DeviceConnectionManager {
 
       redisSub.on('message', messageHandler);
       await redisSub.subscribe(channel);
-      console.log(`[redis] subscribed to ${channel}`);
+      this.logger.debug(`Redis subscribed to ${channel}`);
 
       const ownerClaim = await prisma.deviceClaims.findFirst({
         where: { deviceId: cn, claimType: 'OWNER' },
@@ -91,7 +95,10 @@ export class DeviceConnectionManager {
 
       this.setupSocketLifecycle(wsAdapter, channel, messageHandler, type);
     } catch (error) {
-      console.error(`Error during connection setup for ${cn}:`, error);
+      this.logger.error(
+        `Error during connection setup for ${cn}`,
+        error instanceof Error ? error.stack : String(error)
+      );
       ws.close(1011, 'Server error during setup');
       this.connectedDevices.delete(cn);
     }
@@ -104,7 +111,7 @@ export class DeviceConnectionManager {
 
       // Skip if socket is already closed
       if (!wsAdapter.isOpen()) {
-        console.log(`[redis] skipped (socket closed) channel=${channel}`);
+        this.logger.debug(`Skipped Redis message (socket closed) channel=${channel}`);
         return;
       }
 
@@ -113,7 +120,9 @@ export class DeviceConnectionManager {
         try {
           // Double-check socket is still open before processing
           if (!wsAdapter.isOpen()) {
-            console.log(`[redis] skipped (socket closed during async) channel=${channel}`);
+            this.logger.debug(
+              `Skipped Redis message (socket closed during async) channel=${channel}`
+            );
             return;
           }
 
@@ -126,7 +135,10 @@ export class DeviceConnectionManager {
         } catch (error) {
           // Only log if socket is still open (otherwise it's expected)
           if (wsAdapter.isOpen()) {
-            console.error(`Error processing Redis message for ${wsAdapter.getDeviceID()}:`, error);
+            this.logger.error(
+              `Error processing Redis message for ${wsAdapter.getDeviceID()}`,
+              error instanceof Error ? error.stack : String(error)
+            );
           }
         }
       })();
@@ -163,7 +175,9 @@ export class DeviceConnectionManager {
 
           if (deviceType === 'MATRX') {
             const matrxMessage = fromBinary(MatrxMessageSchema, payload);
-            console.log(`[ws] received device=${deviceId} type=${matrxMessage.message.case}`);
+            this.logger.debug(
+              `Received message device=${deviceId} type=${matrxMessage.message.case}`
+            );
             await matrxMessageHandler(wsAdapter, matrxMessage);
           } else if (deviceType === 'LANTERN') {
             await lanternMessageHandler(wsAdapter, payload);
@@ -173,15 +187,17 @@ export class DeviceConnectionManager {
         } catch (error) {
           // Only log if socket is still open (otherwise disconnect during processing is expected)
           if (wsAdapter.isOpen()) {
-            console.error(`Error processing message from ${deviceId}:`, error);
+            this.logger.error(
+              `Error processing message from ${deviceId}`,
+              error instanceof Error ? error.stack : String(error)
+            );
           }
         }
       })();
     });
 
     ws.on('ping', () => {
-      // ws library automatically sends pong, but log for debugging
-      console.log(`[ws] ping received device=${deviceId}`);
+      this.logger.debug(`Ping received device=${deviceId}`);
       // Update lastSeenAt on ping frames (device keepalive)
       prisma.device
         .update({
@@ -189,12 +205,15 @@ export class DeviceConnectionManager {
           data: { lastSeenAt: new Date() },
         })
         .catch((error) => {
-          console.error(`Error updating lastSeenAt on ping for ${deviceId}:`, error);
+          this.logger.error(
+            `Error updating lastSeenAt on ping for ${deviceId}`,
+            error instanceof Error ? error.stack : String(error)
+          );
         });
     });
 
     ws.on('pong', () => {
-      console.log(`[ws] pong received device=${deviceId}`);
+      this.logger.debug(`Pong received device=${deviceId}`);
     });
 
     // Server-side keepalive: ping device every 30 seconds
@@ -206,21 +225,35 @@ export class DeviceConnectionManager {
 
     const cleanup = async () => {
       clearInterval(pingInterval);
-      this.connectedDevices.delete(deviceId);
-      this.deviceHandlers.delete(deviceId);
       redisSub.off('message', messageHandler);
-      try {
-        await redisSub.unsubscribe(channel);
-        console.log(`[ws] cleanup complete device=${deviceId}`);
-      } catch (error) {
-        console.error(`[ws] cleanup error device=${deviceId}:`, error);
+
+      // Only unsubscribe if this connection's handler is still the active one
+      // (prevents race condition when device reconnects before old connection closes)
+      const currentHandler = this.deviceHandlers.get(deviceId);
+      if (currentHandler === messageHandler) {
+        this.connectedDevices.delete(deviceId);
+        this.deviceHandlers.delete(deviceId);
+        try {
+          await redisSub.unsubscribe(channel);
+          this.logger.log(`Cleanup complete device=${deviceId}`);
+        } catch (error) {
+          this.logger.error(
+            `Cleanup error device=${deviceId}`,
+            error instanceof Error ? error.stack : String(error)
+          );
+        }
+      } else {
+        this.logger.debug(`Skipped unsubscribe for stale connection device=${deviceId}`);
       }
     };
 
-    ws.on('close', cleanup);
+    ws.on('close', (code: number, reason: Buffer) => {
+      this.logger.log(`Connection closed device=${deviceId} code=${code} reason=${reason.toString() || 'none'}`);
+      cleanup();
+    });
 
     ws.on('error', (error: Error) => {
-      console.error(`WebSocket error for device ${deviceId}:`, error);
+      this.logger.error(`WebSocket error for device ${deviceId}`, error.stack);
       cleanup();
     });
   }

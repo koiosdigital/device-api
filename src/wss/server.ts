@@ -2,15 +2,21 @@ import { createServer, type IncomingMessage, type Server } from 'http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { prisma, redis, redisSub } from '@/shared/utils';
 import { DeviceConnectionManager } from '@/wss/connection-manager';
+import { LoggerService } from '@/shared/logger';
 
 export type ServerOptions = {
   port?: number;
+  logger?: LoggerService;
 };
 
 export function startServer(options: ServerOptions = {}): Server {
   const port = options.port ?? 9091;
+  const logger = options.logger ?? new LoggerService();
+  logger.setServerType('SocketServer');
+  logger.setContext('WebSocket');
+
   const connectedDevices = new Set<string>();
-  const connectionManager = new DeviceConnectionManager({ connectedDevices });
+  const connectionManager = new DeviceConnectionManager({ connectedDevices, logger });
 
   const server = createServer();
   const wss = new WebSocketServer({
@@ -39,36 +45,37 @@ export function startServer(options: ServerOptions = {}): Server {
   });
 
   server.listen(port, '0.0.0.0');
-  attachShutdownHandlers(server, wss);
+  logger.log(`WebSocket server listening on port ${port}`);
+  attachShutdownHandlers(server, wss, logger);
   return server;
 }
 
-function attachShutdownHandlers(server: Server, wss: WebSocketServer): void {
+function attachShutdownHandlers(server: Server, wss: WebSocketServer, logger: LoggerService): void {
   const shutdown = async (signal: string) => {
-    console.log(`${signal} received, starting graceful shutdown...`);
+    logger.log(`${signal} received, starting graceful shutdown...`);
 
     server.close(() => {
-      console.log('HTTP server closed');
+      logger.log('HTTP server closed');
     });
 
     wss.clients.forEach((client) => client.close(1001, 'Server shutting down'));
-    console.log(`Closed ${wss.clients.size} WebSocket connections`);
+    logger.log(`Closed ${wss.clients.size} WebSocket connections`);
 
     try {
       await Promise.all([redis.quit(), redisSub.quit()]);
-      console.log('Redis connections closed');
+      logger.log('Redis connections closed');
     } catch (error) {
-      console.error('Error closing Redis connections:', error);
+      logger.error('Error closing Redis connections', error instanceof Error ? error.stack : String(error));
     }
 
     try {
       await prisma.$disconnect();
-      console.log('Prisma disconnected');
+      logger.log('Prisma disconnected');
     } catch (error) {
-      console.error('Error disconnecting Prisma:', error);
+      logger.error('Error disconnecting Prisma', error instanceof Error ? error.stack : String(error));
     }
 
-    console.log('Graceful shutdown complete');
+    logger.log('Graceful shutdown complete');
     process.exit(0);
   };
 

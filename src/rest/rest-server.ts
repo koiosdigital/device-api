@@ -5,12 +5,14 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '@/rest/app.module';
 import { HttpExceptionFilter } from '@/rest/common/filters';
+import { LoggerService } from '@/shared/logger';
 import {
   REST_API_DESCRIPTION,
   REST_API_RELEASE,
   REST_API_TITLE,
   REST_API_VERSION,
   REST_DOCUMENTATION_PATH,
+  CORS_ALLOWED_ORIGINS,
 } from './config/rest.constants';
 
 export type RestServerOptions = {
@@ -20,14 +22,17 @@ export type RestServerOptions = {
 export async function startRestServer(options: RestServerOptions = {}): Promise<void> {
   const port = options.port ?? 9090;
 
+  const logger = new LoggerService();
+  logger.setContext('REST');
+
   const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,
+    logger: LoggerService.getLogLevels(),
   });
 
   app.enableCors({
-    origin: '*',
-    methods: '*',
-    allowedHeaders: '*',
+    origin: CORS_ALLOWED_ORIGINS,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true,
   });
 
@@ -63,5 +68,5 @@ export async function startRestServer(options: RestServerOptions = {}): Promise<
   });
 
   await app.listen(port);
-  console.log(`REST server listening on port ${port}`);
+  logger.log(`REST server listening on port ${port}`);
 }

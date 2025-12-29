@@ -3,6 +3,11 @@ import type { DeviceType } from '@/generated/prisma/enums';
 import { create, toBinary } from '@bufbuild/protobuf';
 import { MatrxMessageSchema } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
 import { JoinResponseSchema, type UploadCoreDump } from '@/protobufs/generated/ts/kd/v1/common_pb';
+import { LoggerService } from '@/shared/logger';
+
+const logger = new LoggerService();
+logger.setServerType('SocketServer');
+logger.setContext('Handler');
 
 type JoinResponseOptions = {
   isClaimed: boolean;
@@ -35,10 +40,6 @@ export const handleUploadCoreDump = async (
   ws: WebSocketAdapter,
   message: UploadCoreDump
 ): Promise<void> => {
-  console.log('Core dump received from device:', ws.getDeviceID());
-  console.log('Firmware info:', {
-    project: message.firmwareProject,
-    version: message.firmwareVersion,
-    variant: message.firmwareVariant,
-  });
+  logger.log(`Core dump received from device: ${ws.getDeviceID()}`);
+  logger.log(`Firmware info: project=${message.firmwareProject} version=${message.firmwareVersion} variant=${message.firmwareVariant}`);
 };

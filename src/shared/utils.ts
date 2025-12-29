@@ -2,6 +2,13 @@ import { DeviceType } from '@/generated/prisma/enums';
 import { PrismaClient } from '@/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import Redis from 'ioredis';
+import { LoggerService } from '@/shared/logger';
+
+const logger = new LoggerService();
+logger.setContext('Database');
+
+const redisLogger = new LoggerService();
+redisLogger.setContext('Redis');
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -22,15 +29,24 @@ export const redisSub = new Redis(process.env.REDIS_URL || 'redis://localhost:63
 });
 
 // Log Redis connection events for debugging
-redis.on('error', (err) => console.error('Redis error:', err.message));
-redis.on('connect', () => console.log('Redis connected'));
-redis.on('reconnecting', () => console.log('Redis reconnecting...'));
+redis.on('error', (err) => redisLogger.error(`Redis error: ${err.message}`));
+redis.on('connect', () => redisLogger.log('Redis connected'));
+redis.on('reconnecting', () => redisLogger.warn('Redis reconnecting...'));
 
-redisSub.on('error', (err) => console.error('Redis sub error:', err.message));
-redisSub.on('connect', () => console.log('Redis sub connected'));
-redisSub.on('reconnecting', () => console.log('Redis sub reconnecting...'));
-redisSub.on('end', () => console.error('Redis sub connection ended'));
-redisSub.on('close', () => console.error('Redis sub connection closed'));
+redisSub.on('error', (err) => redisLogger.error(`Redis sub error: ${err.message}`));
+redisSub.on('connect', () => redisLogger.log('Redis sub connected'));
+redisSub.on('reconnecting', () => redisLogger.warn('Redis sub reconnecting...'));
+redisSub.on('end', () => redisLogger.error('Redis sub connection ended'));
+redisSub.on('close', () => redisLogger.error('Redis sub connection closed'));
+redisSub.on('subscribe', (channel, count) => {
+  redisLogger.debug(`Subscribed to ${channel}, total subscriptions: ${count}`);
+});
+redisSub.on('unsubscribe', (channel, count) => {
+  redisLogger.debug(`Unsubscribed from ${channel}, remaining subscriptions: ${count}`);
+});
+
+const notifyLogger = new LoggerService();
+notifyLogger.setContext('Notify');
 
 /**
  * Notify device to refresh its schedule (installations changed)
@@ -39,7 +55,7 @@ export async function notifyScheduleUpdate(deviceId: string): Promise<void> {
   const channel = `device:${deviceId}`;
   const message = JSON.stringify({ type: 'schedule_update' });
   const subscribers = await redis.publish(channel, message);
-  console.log(`[notify] schedule_update device=${deviceId} subscribers=${subscribers}`);
+  notifyLogger.debug(`schedule_update device=${deviceId} subscribers=${subscribers}`);
 }
 
 /**
@@ -49,7 +65,7 @@ export async function notifySettingsUpdate(deviceId: string): Promise<void> {
   const channel = `device:${deviceId}`;
   const message = JSON.stringify({ type: 'settings_update' });
   const subscribers = await redis.publish(channel, message);
-  console.log(`[notify] settings_update device=${deviceId} subscribers=${subscribers}`);
+  notifyLogger.debug(`settings_update device=${deviceId} subscribers=${subscribers}`);
 }
 
 /**
@@ -59,7 +75,7 @@ export async function notifyFactoryReset(deviceId: string, reason?: string): Pro
   const channel = `device:${deviceId}`;
   const message = JSON.stringify({ type: 'factory_reset', reason: reason || 'Device deleted by owner' });
   const subscribers = await redis.publish(channel, message);
-  console.log(`[notify] factory_reset device=${deviceId} subscribers=${subscribers}`);
+  notifyLogger.log(`factory_reset device=${deviceId} subscribers=${subscribers}`);
 }
 
 // Type-specific settings

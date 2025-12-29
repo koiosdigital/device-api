@@ -9,6 +9,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '@/rest/auth/public.decorator';
 import {
   ApiBearerAuth,
@@ -102,6 +103,7 @@ export class AppsController {
   }
 
   @Public()
+  @SkipThrottle()
   @Get(':id/preview/:dimensions.webp')
   @ApiProduces('image/webp')
   @ApiOperation({ summary: 'Generate a static WebP preview using schema defaults' })
@@ -140,6 +142,7 @@ export class AppsController {
   }
 
   @Public()
+  @SkipThrottle()
   @Get(':id/preview/:dimensions.gif')
   @ApiProduces('image/gif')
   @ApiOperation({ summary: 'Generate a static GIF preview using schema defaults' })
@@ -173,7 +176,6 @@ export class AppsController {
       height: parsedHeight,
       deviceId,
     });
-    console.log(buffer);
     this.setPreviewHeaders(res, 'image/gif', buffer.length);
     return new StreamableFile(buffer);
   }

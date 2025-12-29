@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import type { ErrorResponseDto } from '../dto/error-response.dto';
+import { LoggerService } from '@/shared/logger';
 
 const ERROR_CODES: Record<number, string> = {
   400: 'BAD_REQUEST',
@@ -23,6 +24,12 @@ const ERROR_CODES: Record<number, string> = {
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new LoggerService();
+
+  constructor() {
+    this.logger.setContext('ExceptionFilter');
+  }
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -58,11 +65,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof Error) {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal server error';
-      console.error('Unhandled exception:', exception);
+      this.logger.error('Unhandled exception', exception.stack);
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal server error';
-      console.error('Unknown exception:', exception);
+      this.logger.error('Unknown exception', String(exception));
     }
 
     const errorResponse: ErrorResponseDto = {

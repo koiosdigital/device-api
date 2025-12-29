@@ -5,8 +5,11 @@ import Handlebars from 'handlebars';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { LoggerService } from '@/shared/logger';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const logger = new LoggerService();
+logger.setContext('EmailService');
 
 export interface EmailTemplateData {
   title: string;
@@ -71,7 +74,7 @@ class EmailService {
     const { html, errors } = mjml2html(mjmlWithData);
 
     if (errors && errors.length > 0) {
-      console.warn('MJML compilation warnings:', errors);
+      logger.warn(`MJML compilation warnings: ${JSON.stringify(errors)}`);
     }
 
     return html;

@@ -1,6 +1,11 @@
 import createClient from 'openapi-fetch';
 import type { paths } from '@/generated/licensing-api';
 import { createSharedSecretJwt } from '@/shared/auth';
+import { LoggerService } from '@/shared/logger';
+
+const logger = new LoggerService();
+logger.setServerType('SocketServer');
+logger.setContext('PKI');
 
 const LICENSING_API_URL = process.env.LICENSING_API_URL || 'https://licensing.api.koiosdigital.net';
 
@@ -17,26 +22,25 @@ export interface SignCsrResult {
  * @returns Result with success status and either the certificate chain or an error message
  */
 export async function signCsr(csrPem: string): Promise<SignCsrResult> {
-  console.log(`[pki] signCsr called, csr length=${csrPem.length}`);
+  logger.debug(`signCsr called, csr length=${csrPem.length}`);
 
   const secret = process.env.LICENSING_JWT_SECRET;
   if (!secret) {
-    console.error('[pki] LICENSING_JWT_SECRET not configured');
+    logger.error('LICENSING_JWT_SECRET not configured');
     return { success: false, error: 'LICENSING_JWT_SECRET not configured' };
   }
 
   try {
-    console.log(`[pki] creating JWT token for licensing API`);
+    logger.debug('Creating JWT token for licensing API');
     const token = await createSharedSecretJwt(secret, {
       sub: 'device-api',
       roles: ['koios-factory'],
     });
-    console.log(`[pki] JWT token created`);
+    logger.debug('JWT token created');
 
     const client = createClient<paths>({ baseUrl: LICENSING_API_URL });
 
-    console.log(`[pki] calling licensing API at ${LICENSING_API_URL}/v1/pki/sign`);
-    console.log(`[pki] request body (CSR):\n${csrPem}`);
+    logger.debug(`Calling licensing API at ${LICENSING_API_URL}/v1/pki/sign`);
 
     const result = await client.POST('/v1/pki/sign', {
       headers: {
@@ -51,7 +55,7 @@ export async function signCsr(csrPem: string): Promise<SignCsrResult> {
       parseAs: 'text',
     });
 
-    console.log(`[pki] licensing API response status=${result.response.status}`);
+    logger.debug(`Licensing API response status=${result.response.status}`);
 
     if (result.error || !result.response.ok) {
       const status = result.response.status;
@@ -70,18 +74,17 @@ export async function signCsr(csrPem: string): Promise<SignCsrResult> {
         errorMsg = 'Signing failed';
       }
 
-      console.error(`[pki] licensing API error: ${errorMsg} (status=${status})`);
+      logger.error(`Licensing API error: ${errorMsg} (status=${status})`);
       return { success: false, error: errorMsg };
     }
 
     // Success response is PEM text
     const certificateChain = result.data as string;
-    console.log(`[pki] response body (certificate chain):\n${certificateChain}`);
-    console.log(`[pki] signing successful, cert length=${certificateChain.length}`);
+    logger.debug(`Signing successful, cert length=${certificateChain.length}`);
     return { success: true, cert: certificateChain };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[pki] signCsr error:', message);
+    logger.error(`signCsr error: ${message}`);
     return { success: false, error: message };
   }
 }

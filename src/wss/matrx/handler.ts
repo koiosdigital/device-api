@@ -6,12 +6,12 @@ import type { paths } from '@/generated/matrx-renderer';
 import {
   MatrxMessageSchema,
   type MatrxMessage,
-  type ModifyScheduleItem,
-  type SpriteRenderRequest,
-  type CurrentlyDisplayingUpdate,
+  type ScheduleItemSetPinState,
+  type AppRenderRequest,
+  type CurrentlyDisplayingApp,
   type DeviceInfo,
-  MatrxScheduleSchema,
-  MatrxSpriteDataSchema,
+  ScheduleSchema,
+  AppRenderResponseSchema,
   DeviceConfigSchema,
   DeviceConfigRequestSchema,
 } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
@@ -24,6 +24,11 @@ import { prisma, redis, uuidBytesToString, uuidStringToBytes } from '@/shared/ut
 import { handleUploadCoreDump, sendJoinResponse } from '@/shared/handler';
 import type { MatrxSettings } from '@/shared/utils';
 import { handleRenewCertRequest } from '@/wss/pki';
+import { LoggerService } from '@/shared/logger';
+
+const logger = new LoggerService();
+logger.setServerType('SocketServer');
+logger.setContext('MatrxHandler');
 
 // Standalone renderer client for WSS (not using NestJS DI)
 const rendererBaseUrl = process.env.MATRX_RENDERER_URL || 'http://localhost:8080';
@@ -103,12 +108,12 @@ const handleScheduleRequestMessage = async (ws: WebSocketAdapter): Promise<void>
 
   const apiResponse = create(MatrxMessageSchema);
   apiResponse.message.case = 'schedule';
-  apiResponse.message.value = create(MatrxScheduleSchema);
+  apiResponse.message.value = create(ScheduleSchema);
   apiResponse.message.value.scheduleItems = installations.map((installation) => ({
     uuid: uuidStringToBytes(installation.id),
     displayTime: installation.displayTime,
-    userPinned: installation.pinnedByUser,
-    userSkipped: installation.skippedByUser,
+    pinned: installation.pinnedByUser,
+    skipped: installation.skippedByUser,
     $typeName: 'kd.v1.ScheduleItem',
   }));
 
@@ -116,17 +121,20 @@ const handleScheduleRequestMessage = async (ws: WebSocketAdapter): Promise<void>
   ws.send(resp, true);
 };
 
-const handleSpriteRenderRequestMessage = async (
+const handleAppRenderRequestMessage = async (
   ws: WebSocketAdapter,
-  message: SpriteRenderRequest
+  message: AppRenderRequest
 ): Promise<void> => {
-  const uuid = uuidBytesToString(message.spriteUuid);
+  const uuid = uuidBytesToString(message.appUuid);
   const deviceId = ws.getDeviceID();
 
   const installation = await prisma.matrxInstallation.findUnique({
     where: {
       id: uuid,
       deviceId,
+    },
+    include: {
+      device: true,
     },
   });
 
@@ -135,16 +143,17 @@ const handleSpriteRenderRequestMessage = async (
   }
 
   const config = installation.config as { app_id: string; params: Record<string, unknown> };
+  const deviceInfo = installation.device.deviceInfo as { width?: number; height?: number } | null;
 
-  console.log(`[render] request app=${config.app_id} uuid=${uuid}`);
+  logger.debug(`Render request app=${config.app_id} uuid=${uuid}`);
 
   try {
     const result = await rendererClient.POST('/apps/{id}/render', {
       params: {
         path: { id: config.app_id },
         query: {
-          width: message.deviceWidth,
-          height: message.deviceHeight,
+          width: deviceInfo?.width || 0,
+          height: deviceInfo?.height || 0,
           device_id: deviceId,
         },
       },
@@ -152,55 +161,53 @@ const handleSpriteRenderRequestMessage = async (
     });
 
     if (result.error || !result.data) {
-      console.log(`[render] error app=${config.app_id} uuid=${uuid}`);
+      logger.warn(`Render error app=${config.app_id} uuid=${uuid}`);
       return;
     }
 
     const renderOutput = result.data.result.render_output;
+    const bytes = Buffer.from(renderOutput, 'base64');
 
-    if (renderOutput.length === 0) {
-      console.log(`[render] empty output app=${config.app_id} uuid=${uuid}`);
-      const apiResponse = create(MatrxMessageSchema);
-      apiResponse.message.case = 'spriteData';
-      apiResponse.message.value = create(MatrxSpriteDataSchema);
-      apiResponse.message.value.spriteUuid = uuidStringToBytes(uuid);
-      apiResponse.message.value.spriteData = new Uint8Array([]);
-      apiResponse.message.value.renderError = false;
-      apiResponse.message.value.systemSkipped = true;
-      apiResponse.message.value.ttlEpoch = Math.floor(Date.now() / 1000) + 60;
-      const resp = toBinary(MatrxMessageSchema, apiResponse);
-      ws.send(resp, true);
+    // SHA256 of appData
+    const hash = require('crypto').createHash('sha256').update(bytes).digest();
+
+    // Skip sending if device already has this exact render
+    if (
+      message.dataSha256.length > 0 &&
+      Buffer.compare(hash, Buffer.from(message.dataSha256)) === 0
+    ) {
+      logger.debug(`Render skipped (unchanged) app=${config.app_id} uuid=${uuid}`);
       return;
     }
 
-    // Render successful
-    const bytes = Buffer.from(renderOutput, 'base64');
     const apiResponse = create(MatrxMessageSchema);
-    apiResponse.message.case = 'spriteData';
-    apiResponse.message.value = create(MatrxSpriteDataSchema);
-    apiResponse.message.value.spriteUuid = uuidStringToBytes(uuid);
-    apiResponse.message.value.spriteData = new Uint8Array(bytes);
-    apiResponse.message.value.renderError = false;
-    apiResponse.message.value.ttlEpoch = Math.floor(Date.now() / 1000) + 60;
+    apiResponse.message.case = 'appRenderResponse';
+    apiResponse.message.value = create(AppRenderResponseSchema);
+    apiResponse.message.value.appUuid = uuidStringToBytes(uuid);
+    apiResponse.message.value.appData = new Uint8Array(bytes);
+    apiResponse.message.value.dataSha256 = new Uint8Array(hash);
 
     const resp = toBinary(MatrxMessageSchema, apiResponse);
     ws.send(resp, true);
 
-    console.log(`[render] response app=${config.app_id} uuid=${uuid} bytes=${bytes.length}`);
+    logger.debug(`Render response app=${config.app_id} uuid=${uuid} bytes=${bytes.length}`);
   } catch (error) {
-    console.error(`[render] failed app=${config.app_id} uuid=${uuid}`, error);
+    logger.error(
+      `Render failed app=${config.app_id} uuid=${uuid}`,
+      error instanceof Error ? error.stack : String(error)
+    );
     return;
   }
 };
 
-const handleModifyScheduleItemMessage = async (
+const handleScheduleItemSetPinStateMessage = async (
   ws: WebSocketAdapter,
-  message: ModifyScheduleItem
+  message: ScheduleItemSetPinState
 ): Promise<void> => {
   const uuid = uuidBytesToString(message.uuid);
   const deviceId = ws.getDeviceID();
 
-  if (message.userPinned) {
+  if (message.pinned) {
     await prisma.$transaction([
       prisma.matrxInstallation.updateMany({
         where: { deviceId },
@@ -213,14 +220,6 @@ const handleModifyScheduleItemMessage = async (
     ]);
     return;
   }
-
-  await prisma.matrxInstallation.update({
-    where: { id: uuid, deviceId },
-    data: {
-      skippedByUser: message.userSkipped,
-      pinnedByUser: message.userPinned,
-    },
-  });
 
   await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'schedule_update' }));
 };
@@ -244,7 +243,9 @@ async function verifyClaimToken(tokenBytes: Uint8Array): Promise<string | null> 
       return payload.user_id;
     }
   } catch (error) {
-    console.warn('Failed to verify claim token', error);
+    logger.warn(
+      `Failed to verify claim token: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   return null;
@@ -307,14 +308,17 @@ const handleClaimDeviceMessage = async (
 
     sendJoinResponse(ws, { isClaimed: true, success: true });
   } catch (error) {
-    console.error('Failed to claim device:', error);
+    logger.error(
+      `Failed to claim device: ${deviceId}`,
+      error instanceof Error ? error.stack : String(error)
+    );
     sendJoinResponse(ws, { isClaimed: false, success: false });
   }
 };
 
-const handleCurrentlyDisplayingUpdate = async (
+const handleCurrentlyDisplayingApp = async (
   ws: WebSocketAdapter,
-  message: CurrentlyDisplayingUpdate
+  message: CurrentlyDisplayingApp
 ): Promise<void> => {
   const installationId = uuidBytesToString(message.uuid);
   const deviceId = ws.getDeviceID();
@@ -357,7 +361,10 @@ const handleDeviceInfoMessage = async (
 
     sendCommandResponse(ws, true);
   } catch (error) {
-    console.error('Failed to update device info:', error);
+    logger.error(
+      `Failed to update device info: ${deviceId}`,
+      error instanceof Error ? error.stack : String(error)
+    );
     sendCommandResponse(ws, false);
   }
 };
@@ -370,15 +377,17 @@ export const matrxMessageHandler = async (
     return;
   }
 
+  logger.debug(`Matrx message received device=${ws.getDeviceID()} type=${message.message.case}`);
+
   switch (message.message.case) {
     case 'scheduleRequest':
       await handleScheduleRequestMessage(ws);
       return;
-    case 'spriteRenderRequest':
-      await handleSpriteRenderRequestMessage(ws, message.message.value);
+    case 'appRenderRequest':
+      await handleAppRenderRequestMessage(ws, message.message.value);
       return;
-    case 'modifyScheduleItem':
-      await handleModifyScheduleItemMessage(ws, message.message.value);
+    case 'scheduleItemSetPinState':
+      await handleScheduleItemSetPinStateMessage(ws, message.message.value);
       return;
     case 'deviceConfigRequest': {
       const current = await getMatrxDeviceSettings(ws.getDeviceID());
@@ -407,8 +416,8 @@ export const matrxMessageHandler = async (
     case 'claimDevice':
       await handleClaimDeviceMessage(ws, message.message.value);
       return;
-    case 'currentlyDisplayingUpdate':
-      await handleCurrentlyDisplayingUpdate(ws, message.message.value);
+    case 'currentlyDisplayingApp':
+      await handleCurrentlyDisplayingApp(ws, message.message.value);
       return;
     case 'deviceInfo':
       await handleDeviceInfoMessage(ws, message.message.value);
@@ -417,7 +426,7 @@ export const matrxMessageHandler = async (
       await handleRenewCertRequest(ws, message.message.value);
       return;
     default:
-      console.warn(`Unhandled Matrx message type: ${message.message.case}`);
+      logger.warn(`Unhandled Matrx message type: ${message.message.case}`);
   }
 };
 
@@ -435,23 +444,23 @@ export const matrxQueueHandler = async (ws: WebSocketAdapter, message: any) => {
   const msg = message;
   const deviceId = ws.getDeviceID();
 
-  console.log(`[queue] received device=${deviceId} type=${msg.type}`);
+  logger.debug(`Queue received device=${deviceId} type=${msg.type}`);
 
   if (msg.type === 'schedule_update') {
-    console.log(`[queue] sending schedule device=${deviceId}`);
+    logger.debug(`Queue sending schedule device=${deviceId}`);
     await handleScheduleRequestMessage(ws);
   } else if (msg.type === 'settings_update') {
     const settings = await getMatrxDeviceSettings(deviceId);
     if (settings) {
-      console.log(`[queue] sending device config device=${deviceId}`);
+      logger.debug(`Queue sending device config device=${deviceId}`);
       sendDeviceConfig(ws, settings);
     } else {
-      console.warn(`[queue] no settings found device=${deviceId}`);
+      logger.warn(`Queue no settings found device=${deviceId}`);
     }
   } else if (msg.type === 'factory_reset') {
-    console.log(`[queue] sending factory reset device=${deviceId}`);
+    logger.log(`Queue sending factory reset device=${deviceId}`);
     sendFactoryResetRequest(ws, msg.reason || 'Factory reset requested');
   } else {
-    console.warn(`[queue] unknown message type device=${deviceId} type=${msg.type}`);
+    logger.warn(`Queue unknown message type device=${deviceId} type=${msg.type}`);
   }
 };
