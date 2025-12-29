@@ -24,10 +24,8 @@ COPY prisma.config.ts ./prisma.config.ts
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 RUN pnpm prisma generate
 
-# Copy protobuf definitions and buf configuration
-COPY buf.gen.yaml buf.yaml ./
 COPY src/protobufs ./src/protobufs
-RUN pnpm buf generate
+RUN pnpm postinstall
 
 # Copy everything else and build the application
 COPY . .
@@ -57,7 +55,7 @@ COPY --from=build --chown=appuser:appuser /app/package.json /app/pnpm-lock.yaml 
 
 RUN pnpm install --production --frozen-lockfile --ignore-scripts
 
-EXPOSE 9091
+EXPOSE 9091 9090
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -1,9 +1,7 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import { startRestServer } from '@/rest/rest-server';
 import { startServer } from '@/wss/server';
 import { LoggerService } from '@/shared/logger';
-
-dotenv.config();
 
 const logger = new LoggerService();
 logger.setContext('Bootstrap');
