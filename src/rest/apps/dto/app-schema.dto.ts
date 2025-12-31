@@ -141,6 +141,26 @@ export class AppSchemaGeneratedFieldDto extends AppSchemaFieldBaseDto {
   type!: 'generated';
 }
 
+export class AppSchemaLocationValueDto {
+  @ApiProperty({ description: 'Latitude coordinate', example: '40.6781784' })
+  lat!: string;
+
+  @ApiProperty({ description: 'Longitude coordinate', example: '-73.9441579' })
+  lng!: string;
+
+  @ApiProperty({ description: 'Human readable location description', example: 'Brooklyn, NY, USA' })
+  description!: string;
+
+  @ApiProperty({ description: 'Locality name', example: 'Brooklyn' })
+  locality!: string;
+
+  @ApiProperty({ description: 'Google Places ID', example: 'ChIJCSF8lBZEwokRhngABHRcdoI' })
+  place_id!: string;
+
+  @ApiProperty({ description: 'IANA timezone identifier', example: 'America/New_York' })
+  timezone!: string;
+}
+
 export class AppSchemaLocationFieldDto extends AppSchemaFieldBaseDto {
   @ApiProperty({
     description: 'Discriminator for location field',

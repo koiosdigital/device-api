@@ -27,6 +27,7 @@ import { AppManifestDto } from '@/rest/apps/dto/app-manifest.dto';
 import {
   AppSchemaDto,
   AppSchemaFieldBaseDto,
+  AppSchemaLocationValueDto,
   AppSchemaOptionDto,
   AppSchemaSoundDto,
   AppSchemaVisibilityDto,
@@ -64,6 +65,7 @@ const APP_CONFIG_SCHEMA = {
 @ApiExtraModels(
   AppSchemaDto,
   AppSchemaFieldBaseDto,
+  AppSchemaLocationValueDto,
   AppSchemaOptionDto,
   AppSchemaSoundDto,
   AppSchemaVisibilityDto,
@@ -137,7 +139,7 @@ export class AppsController {
       height: parsedHeight,
       deviceId,
     });
-    this.setPreviewHeaders(res, 'image/webp', buffer.length);
+    this.setImageHeaders(res, 'image/webp', buffer.length, 86400);
     return new StreamableFile(buffer);
   }
 
@@ -176,7 +178,7 @@ export class AppsController {
       height: parsedHeight,
       deviceId,
     });
-    this.setPreviewHeaders(res, 'image/gif', buffer.length);
+    this.setImageHeaders(res, 'image/gif', buffer.length, 86400);
     return new StreamableFile(buffer);
   }
 
@@ -267,9 +269,9 @@ export class AppsController {
     return parsed;
   }
 
-  private setPreviewHeaders(res: Response, contentType: string, length: number) {
+  private setImageHeaders(res: Response, contentType: string, length: number, maxAge: number) {
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+    res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
     res.setHeader('Content-Length', length.toString());
   }
 }
