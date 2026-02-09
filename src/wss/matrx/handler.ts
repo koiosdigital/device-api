@@ -13,6 +13,7 @@ import {
   type DeviceInfo,
   ScheduleSchema,
   AppRenderResponseSchema,
+  AppDataChunkSchema,
   DeviceConfigSchema,
   DeviceConfigRequestSchema,
 } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
@@ -34,6 +35,10 @@ logger.setContext('MatrxHandler');
 // Standalone renderer client for WSS (not using NestJS DI)
 const rendererBaseUrl = process.env.MATRX_RENDERER_URL || 'http://localhost:8080';
 const rendererClient = createClient<paths>({ baseUrl: rendererBaseUrl });
+
+// Chunked transfer constants
+const DEFAULT_CHUNK_SIZE = 8192;
+const MAX_CHUNK_SIZE = 14000; // Stay under 16KB TLS buffer
 
 const getMatrxDeviceSettings = async (deviceId: string): Promise<MatrxSettings | null> => {
   const settings = await prisma.deviceSettings.findUnique({
@@ -122,6 +127,50 @@ const handleScheduleRequestMessage = async (ws: WebSocketAdapter): Promise<void>
   ws.send(resp, true);
 };
 
+const sendChunkedAppData = (
+  ws: WebSocketAdapter,
+  appUuidBytes: Uint8Array,
+  data: Buffer,
+  hash: Buffer,
+  preferredChunkSize: number
+): void => {
+  let chunkSize = preferredChunkSize > 0 ? preferredChunkSize : DEFAULT_CHUNK_SIZE;
+  chunkSize = Math.min(chunkSize, MAX_CHUNK_SIZE);
+
+  const totalSize = data.length;
+  // Always send at least 1 chunk (empty data signals device to clear app)
+  const totalChunks = totalSize === 0 ? 1 : Math.ceil(totalSize / chunkSize);
+
+  // Send metadata response first
+  const metadataResponse = create(MatrxMessageSchema);
+  metadataResponse.message.case = 'appRenderResponse';
+  metadataResponse.message.value = create(AppRenderResponseSchema);
+  metadataResponse.message.value.appUuid = appUuidBytes;
+  metadataResponse.message.value.dataSha256 = new Uint8Array(hash);
+  metadataResponse.message.value.totalSize = totalSize;
+  metadataResponse.message.value.totalChunks = totalChunks;
+
+  const metadataResp = toBinary(MatrxMessageSchema, metadataResponse);
+  ws.send(metadataResp, true);
+
+  // Send data chunks sequentially
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, totalSize);
+    const chunkData = data.subarray(start, end);
+
+    const chunkMessage = create(MatrxMessageSchema);
+    chunkMessage.message.case = 'appDataChunk';
+    chunkMessage.message.value = create(AppDataChunkSchema);
+    chunkMessage.message.value.appUuid = appUuidBytes;
+    chunkMessage.message.value.chunkIndex = i;
+    chunkMessage.message.value.data = new Uint8Array(chunkData);
+
+    const chunkResp = toBinary(MatrxMessageSchema, chunkMessage);
+    ws.send(chunkResp, true);
+  }
+};
+
 const handleAppRenderRequestMessage = async (
   ws: WebSocketAdapter,
   message: AppRenderRequest
@@ -181,17 +230,18 @@ const handleAppRenderRequestMessage = async (
       return;
     }
 
-    const apiResponse = create(MatrxMessageSchema);
-    apiResponse.message.case = 'appRenderResponse';
-    apiResponse.message.value = create(AppRenderResponseSchema);
-    apiResponse.message.value.appUuid = uuidStringToBytes(uuid);
-    apiResponse.message.value.appData = new Uint8Array(bytes);
-    apiResponse.message.value.dataSha256 = new Uint8Array(hash);
+    sendChunkedAppData(
+      ws,
+      uuidStringToBytes(uuid),
+      bytes,
+      hash,
+      message.preferredChunkSize
+    );
 
-    const resp = toBinary(MatrxMessageSchema, apiResponse);
-    ws.send(resp, true);
-
-    logger.debug(`Render response app=${config.app_id} uuid=${uuid} bytes=${bytes.length}`);
+    const chunkSize = message.preferredChunkSize > 0 ? message.preferredChunkSize : DEFAULT_CHUNK_SIZE;
+    logger.debug(
+      `Render response app=${config.app_id} uuid=${uuid} bytes=${bytes.length} chunks=${Math.ceil(bytes.length / chunkSize)}`
+    );
   } catch (error) {
     logger.error(
       `Render failed app=${config.app_id} uuid=${uuid}`,

@@ -73,7 +73,10 @@ export async function notifySettingsUpdate(deviceId: string): Promise<void> {
  */
 export async function notifyFactoryReset(deviceId: string, reason?: string): Promise<void> {
   const channel = `device:${deviceId}`;
-  const message = JSON.stringify({ type: 'factory_reset', reason: reason || 'Device deleted by owner' });
+  const message = JSON.stringify({
+    type: 'factory_reset',
+    reason: reason || 'Device deleted by owner',
+  });
   const subscribers = await redis.publish(channel, message);
   notifyLogger.log(`factory_reset device=${deviceId} subscribers=${subscribers}`);
 }
@@ -104,13 +107,15 @@ export function getDefaultTypeSettings(type: DeviceType): DeviceSettings {
       sleep_start: 0,
       sleep_end: 0,
     } as LanternSettings;
-  } else {
+  } else if (type === 'MATRX') {
     return {
       screenEnabled: true,
       screenBrightness: 128,
       autoBrightnessEnabled: false,
       screenOffLux: 5,
     } as MatrxSettings;
+  } else {
+    throw new Error(`No default settings for device type: ${type}`);
   }
 }
 
