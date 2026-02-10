@@ -134,40 +134,52 @@ const sendChunkedAppData = (
   hash: Buffer,
   preferredChunkSize: number
 ): void => {
-  let chunkSize = preferredChunkSize > 0 ? preferredChunkSize : DEFAULT_CHUNK_SIZE;
-  chunkSize = Math.min(chunkSize, MAX_CHUNK_SIZE);
-
   const totalSize = data.length;
-  // Always send at least 1 chunk (empty data signals device to clear app)
-  const totalChunks = totalSize === 0 ? 1 : Math.ceil(totalSize / chunkSize);
+  const displayable = totalSize > 0;
 
   // Send metadata response first
   const metadataResponse = create(MatrxMessageSchema);
   metadataResponse.message.case = 'appRenderResponse';
   metadataResponse.message.value = create(AppRenderResponseSchema);
   metadataResponse.message.value.appUuid = appUuidBytes;
-  metadataResponse.message.value.dataSha256 = new Uint8Array(hash);
-  metadataResponse.message.value.totalSize = totalSize;
-  metadataResponse.message.value.totalChunks = totalChunks;
+  metadataResponse.message.value.displayable = displayable;
 
-  const metadataResp = toBinary(MatrxMessageSchema, metadataResponse);
-  ws.send(metadataResp, true);
+  if (displayable) {
+    let chunkSize = preferredChunkSize > 0 ? preferredChunkSize : DEFAULT_CHUNK_SIZE;
+    chunkSize = Math.min(chunkSize, MAX_CHUNK_SIZE);
+    const totalChunks = Math.ceil(totalSize / chunkSize);
 
-  // Send data chunks sequentially
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * chunkSize;
-    const end = Math.min(start + chunkSize, totalSize);
-    const chunkData = data.subarray(start, end);
+    metadataResponse.message.value.dataSha256 = new Uint8Array(hash);
+    metadataResponse.message.value.totalSize = totalSize;
+    metadataResponse.message.value.totalChunks = totalChunks;
 
-    const chunkMessage = create(MatrxMessageSchema);
-    chunkMessage.message.case = 'appDataChunk';
-    chunkMessage.message.value = create(AppDataChunkSchema);
-    chunkMessage.message.value.appUuid = appUuidBytes;
-    chunkMessage.message.value.chunkIndex = i;
-    chunkMessage.message.value.data = new Uint8Array(chunkData);
+    const metadataResp = toBinary(MatrxMessageSchema, metadataResponse);
+    ws.send(metadataResp, true);
 
-    const chunkResp = toBinary(MatrxMessageSchema, chunkMessage);
-    ws.send(chunkResp, true);
+    // Send data chunks sequentially
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, totalSize);
+      const chunkData = data.subarray(start, end);
+
+      const chunkMessage = create(MatrxMessageSchema);
+      chunkMessage.message.case = 'appDataChunk';
+      chunkMessage.message.value = create(AppDataChunkSchema);
+      chunkMessage.message.value.appUuid = appUuidBytes;
+      chunkMessage.message.value.chunkIndex = i;
+      chunkMessage.message.value.data = new Uint8Array(chunkData);
+
+      const chunkResp = toBinary(MatrxMessageSchema, chunkMessage);
+      ws.send(chunkResp, true);
+    }
+  } else {
+    // Not displayable: send zeros for sha256, 0 for size/chunks, no data chunks
+    metadataResponse.message.value.dataSha256 = new Uint8Array(32);
+    metadataResponse.message.value.totalSize = 0;
+    metadataResponse.message.value.totalChunks = 0;
+
+    const metadataResp = toBinary(MatrxMessageSchema, metadataResponse);
+    ws.send(metadataResp, true);
   }
 };
 
@@ -230,15 +242,10 @@ const handleAppRenderRequestMessage = async (
       return;
     }
 
-    sendChunkedAppData(
-      ws,
-      uuidStringToBytes(uuid),
-      bytes,
-      hash,
-      message.preferredChunkSize
-    );
+    sendChunkedAppData(ws, uuidStringToBytes(uuid), bytes, hash, message.preferredChunkSize);
 
-    const chunkSize = message.preferredChunkSize > 0 ? message.preferredChunkSize : DEFAULT_CHUNK_SIZE;
+    const chunkSize =
+      message.preferredChunkSize > 0 ? message.preferredChunkSize : DEFAULT_CHUNK_SIZE;
     logger.debug(
       `Render response app=${config.app_id} uuid=${uuid} bytes=${bytes.length} chunks=${Math.ceil(bytes.length / chunkSize)}`
     );
