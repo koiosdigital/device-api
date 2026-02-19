@@ -9,13 +9,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { SharingService } from './sharing.service';
 import {
   CreateShareInviteDto,
@@ -45,7 +39,8 @@ export class SharingController {
   @UseGuards(OwnerGuard)
   @ApiOperation({
     summary: 'List all shares and pending invites for a device',
-    description: 'Returns a list of users with shared access and pending invites. Only device owners can view this.',
+    description:
+      'Returns a list of users with shared access and pending invites. Only device owners can view this.',
   })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiResponse({ status: 200, description: 'Device shares', type: DeviceSharesResponseDto })
@@ -62,7 +57,8 @@ export class SharingController {
   @UseGuards(OwnerGuard)
   @ApiOperation({
     summary: 'Create a share invite',
-    description: 'Sends an email invitation to share device access. Only device owners can create invites.',
+    description:
+      'Sends an email invitation to share device access. Only device owners can create invites.',
   })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiResponse({ status: 201, description: 'Invite created', type: ShareInviteCreatedDto })
@@ -101,7 +97,8 @@ export class SharingController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Revoke shared access',
-    description: 'Removes shared access for a user. Device owners can revoke any share, shared users can only revoke their own access.',
+    description:
+      'Removes shared access for a user. Device owners can revoke any share, shared users can only revoke their own access.',
   })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiParam({ name: 'userId', description: 'User ID to revoke access for' })
@@ -127,7 +124,8 @@ export class ShareAcceptController {
   @Post('accept')
   @ApiOperation({
     summary: 'Accept a share invite',
-    description: 'Accepts a share invitation using the token from the invite email. The authenticated user will be granted shared access to the device.',
+    description:
+      'Accepts a share invitation using the token from the invite email. The authenticated user will be granted shared access to the device.',
   })
   @ApiResponse({ status: 200, description: 'Share accepted', type: AcceptShareResultDto })
   @ApiBadRequestResponse('Invalid or expired token')

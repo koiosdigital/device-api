@@ -267,7 +267,7 @@ export interface components {
             notifications?: components["schemas"]["AppSchemaNotificationField"][];
         };
         /** @description Discriminated schema field definition */
-        AppSchemaField: components["schemas"]["AppSchemaColorField"] | components["schemas"]["AppSchemaDatetimeField"] | components["schemas"]["AppSchemaDropdownField"] | components["schemas"]["AppSchemaGeneratedField"] | components["schemas"]["AppSchemaLocationField"] | components["schemas"]["AppSchemaLocationBasedField"] | components["schemas"]["AppSchemaOnOffField"] | components["schemas"]["AppSchemaRadioField"] | components["schemas"]["AppSchemaTextField"] | components["schemas"]["AppSchemaTypeaheadField"] | components["schemas"]["AppSchemaOAuth2Field"] | components["schemas"]["AppSchemaOAuth1Field"] | components["schemas"]["AppSchemaPNGField"] | components["schemas"]["AppSchemaNotificationField"];
+        AppSchemaField: components["schemas"]["AppSchemaColorField"] | components["schemas"]["AppSchemaDatetimeField"] | components["schemas"]["AppSchemaDropdownField"] | components["schemas"]["AppSchemaGeneratedField"] | components["schemas"]["AppSchemaLocationField"] | components["schemas"]["AppSchemaLocationBasedField"] | components["schemas"]["AppSchemaOnOffField"] | components["schemas"]["AppSchemaRadioField"] | components["schemas"]["AppSchemaTextField"] | components["schemas"]["AppSchemaTypeaheadField"] | components["schemas"]["AppSchemaOAuth2Field"] | components["schemas"]["AppSchemaOAuth1Field"] | components["schemas"]["AppSchemaPNGField"] | components["schemas"]["AppSchemaNotificationField"] | components["schemas"]["AppSchemaGeoJSONField"];
         AppSchemaOption: {
             display?: string;
             text: string;
@@ -295,8 +295,11 @@ export interface components {
             field: string;
             /** @description Human readable error */
             message: string;
-            /** @description Machine readable error code */
-            code: string;
+            /**
+             * @description Machine readable error code
+             * @enum {string}
+             */
+            code: "required" | "unknown_field" | "invalid_type" | "invalid_color" | "invalid_bool" | "invalid_option" | "invalid_datetime" | "invalid_location" | "invalid_location_option" | "invalid_selection" | "invalid_image" | "invalid_notification" | "missing_credentials" | "invalid_geojson" | "invalid_polygon" | "invalid_point" | "missing_point" | "invalid_handler_data" | "missing_client_id" | "missing_code_verifier" | "missing_client_secret";
         };
         ValidateSchemaResponse: {
             valid: boolean;
@@ -347,22 +350,17 @@ export interface components {
             visibility?: components["schemas"]["AppSchemaVisibility"];
             /** @description Default value serialized as text */
             default?: string;
-            options?: components["schemas"]["AppSchemaOption"][];
-            palette?: string[];
-            sounds?: components["schemas"]["AppSchemaSound"][];
-            /** @description Field ID used as source for generated fields */
-            source?: string;
-            /** @description Pixlet handler invoked for dynamic data */
-            handler?: string;
-            /** @description OAuth client identifier */
-            client_id?: string;
-            /** @description OAuth authorization endpoint */
-            authorization_endpoint?: string;
-            scopes?: string[];
         };
+        /** @description Config value: hex color string (#RRGGBB or #RGB) */
         AppSchemaColorField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "color";
+            /**
+             * Format: color
+             * @description Default hex color (e.g. #FF0000)
+             */
+            default?: string;
+            palette?: string[];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -370,9 +368,15 @@ export interface components {
              */
             type: "color";
         };
+        /** @description Config value: ISO 8601 / RFC 3339 datetime string */
         AppSchemaDatetimeField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "datetime";
+            /**
+             * Format: date-time
+             * @description Default datetime in ISO 8601 format
+             */
+            default?: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -380,9 +384,11 @@ export interface components {
              */
             type: "datetime";
         };
+        /** @description Config value: string matching one of the option values */
         AppSchemaDropdownField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "dropdown";
+            options: components["schemas"]["AppSchemaOption"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -390,9 +396,14 @@ export interface components {
              */
             type: "dropdown";
         };
+        /** @description Config value: none (dynamically generated from source field via handler) */
         AppSchemaGeneratedField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "generated";
+            /** @description Field ID used as source for generated fields */
+            source: string;
+            /** @description Pixlet handler invoked for dynamic data */
+            handler: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -400,6 +411,7 @@ export interface components {
              */
             type: "generated";
         };
+        /** @description Config value: JSON object or JSON string with lat, lng (required), and optional description, locality, place_id, timezone */
         AppSchemaLocationField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "location";
@@ -410,9 +422,12 @@ export interface components {
              */
             type: "location";
         };
+        /** @description Config value: JSON object or JSON string with value (required) and display (optional) */
         AppSchemaLocationBasedField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "locationbased";
+            /** @description Pixlet handler invoked with location JSON to generate options */
+            handler: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -420,6 +435,7 @@ export interface components {
              */
             type: "locationbased";
         };
+        /** @description Config value: boolean or string parseable as boolean (true, false, 1, 0) */
         AppSchemaOnOffField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "onoff";
@@ -430,9 +446,11 @@ export interface components {
              */
             type: "onoff";
         };
+        /** @description Config value: string matching one of the option values */
         AppSchemaRadioField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "radio";
+            options: components["schemas"]["AppSchemaOption"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -440,6 +458,7 @@ export interface components {
              */
             type: "radio";
         };
+        /** @description Config value: plain text string */
         AppSchemaTextField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "text";
@@ -450,9 +469,12 @@ export interface components {
              */
             type: "text";
         };
+        /** @description Config value: JSON object or JSON string with value (required) and display (optional) */
         AppSchemaTypeaheadField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "typeahead";
+            /** @description Pixlet handler invoked with search pattern to generate options */
+            handler: string;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -460,9 +482,21 @@ export interface components {
              */
             type: "typeahead";
         };
+        /** @description Config value: access token string returned by handler */
         AppSchemaOAuth2Field: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "oauth2";
+            /** @description Pixlet handler invoked for dynamic data */
+            handler: string;
+            /** @description OAuth client identifier */
+            client_id?: string;
+            /** @description Indicates if PKCE is used, S256 method will be used if true, and the handler will recieve an additional code_verifier parameter. */
+            pkce?: boolean;
+            /** @description OAuth authorization endpoint */
+            authorization_endpoint: string;
+            scopes: string[];
+            /** @description If true, the user provides their own OAuth client credentials. Mutually exclusive with client_id. */
+            user_defined_client?: boolean;
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -470,6 +504,7 @@ export interface components {
              */
             type: "oauth2";
         };
+        /** @description Config value: authorization token string */
         AppSchemaOAuth1Field: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "oauth1";
@@ -480,6 +515,7 @@ export interface components {
              */
             type: "oauth1";
         };
+        /** @description Config value: base64-encoded image data, optionally with data URI prefix (data:image/png;base64,...) */
         AppSchemaPNGField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "png";
@@ -490,15 +526,30 @@ export interface components {
              */
             type: "png";
         };
+        /** @description Config value: non-empty string */
         AppSchemaNotificationField: components["schemas"]["AppSchemaFieldCommon"] & {
             /** @enum {string} */
             type: "notification";
+            sounds: components["schemas"]["AppSchemaSound"][];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             type: "notification";
+        };
+        /** @description Config value: GeoJSON string or object (RFC 7946 geometry, e.g. Polygon or Point) */
+        AppSchemaGeoJSONField: components["schemas"]["AppSchemaFieldCommon"] & {
+            /** @enum {string} */
+            type: "geojson";
+            /** @description If true, enables point collection on the map UI in addition to polygon drawing */
+            collect_point?: boolean;
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "geojson";
         };
     };
     responses: never;
@@ -895,6 +946,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Handler parameter validation failed (e.g. OAuth2 missing client_id, code_verifier, or client_secret) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateSchemaResponse"];
+                };
             };
             /** @description Failed to invoke schema handler */
             500: {

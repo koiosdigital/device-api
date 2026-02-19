@@ -28,7 +28,9 @@ export class LoggerService {
   private context = 'Application';
   private contextData: LogContext = {};
   private serverType: ServerType = 'Nest';
-  private static enabledLevels: Set<LogLevelType> = new Set(LoggerService.getLogLevels() as LogLevelType[]);
+  private static enabledLevels: Set<LogLevelType> = new Set(
+    LoggerService.getLogLevels() as LogLevelType[]
+  );
 
   setContext(context: string): void {
     this.context = context;

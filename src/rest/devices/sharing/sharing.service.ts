@@ -9,11 +9,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { prisma } from '@/shared/utils';
 import { emailService } from '@/shared/email';
 import { ClaimType } from '@/generated/prisma/enums';
-import type {
-  DeviceSharesResponseDto,
-  ShareInviteCreatedDto,
-  AcceptShareResultDto,
-} from './dto';
+import type { DeviceSharesResponseDto, ShareInviteCreatedDto, AcceptShareResultDto } from './dto';
 
 const INVITE_EXPIRY_HOURS = 24;
 

@@ -65,14 +65,20 @@ function attachShutdownHandlers(server: Server, wss: WebSocketServer, logger: Lo
       await Promise.all([redis.quit(), redisSub.quit()]);
       logger.log('Redis connections closed');
     } catch (error) {
-      logger.error('Error closing Redis connections', error instanceof Error ? error.stack : String(error));
+      logger.error(
+        'Error closing Redis connections',
+        error instanceof Error ? error.stack : String(error)
+      );
     }
 
     try {
       await prisma.$disconnect();
       logger.log('Prisma disconnected');
     } catch (error) {
-      logger.error('Error disconnecting Prisma', error instanceof Error ? error.stack : String(error));
+      logger.error(
+        'Error disconnecting Prisma',
+        error instanceof Error ? error.stack : String(error)
+      );
     }
 
     logger.log('Graceful shutdown complete');

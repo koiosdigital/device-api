@@ -204,7 +204,9 @@ export class InstallationsController {
 
   @Get(':id/render.webp')
   @ApiProduces('image/webp')
-  @ApiOperation({ summary: 'Render installation as WebP using stored config and device dimensions' })
+  @ApiOperation({
+    summary: 'Render installation as WebP using stored config and device dimensions',
+  })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
   @ApiParam({ name: 'id', description: 'Installation ID' })
   @ApiResponse({

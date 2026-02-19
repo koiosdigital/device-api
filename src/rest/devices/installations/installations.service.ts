@@ -207,11 +207,7 @@ export class InstallationsService {
     await notifyScheduleUpdate(deviceId);
   }
 
-  async render(
-    deviceId: string,
-    installationId: string,
-    userId: string
-  ): Promise<Buffer> {
+  async render(deviceId: string, installationId: string, userId: string): Promise<Buffer> {
     const installation = await prisma.matrxInstallation.findFirst({
       where: {
         id: installationId,
@@ -240,15 +236,11 @@ export class InstallationsService {
     const config = installation.config as { app_id: string; params: Record<string, unknown> };
 
     // Use renderApp with the installation's config params
-    const renderResult = await this.matrxRendererService.renderApp(
-      config.app_id,
-      config.params,
-      {
-        width: deviceInfo.width,
-        height: deviceInfo.height,
-        deviceId,
-      }
-    );
+    const renderResult = await this.matrxRendererService.renderApp(config.app_id, config.params, {
+      width: deviceInfo.width,
+      height: deviceInfo.height,
+      deviceId,
+    });
 
     // Decode base64 render output to binary
     return Buffer.from(renderResult.result.render_output, 'base64');

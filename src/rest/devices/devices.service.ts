@@ -166,9 +166,7 @@ export class DevicesService {
     const accessLevel = userClaim?.claimType ?? ClaimType.OWNER;
 
     // Compute online status: device seen within the last 60 seconds
-    const online = record.lastSeenAt
-      ? Date.now() - record.lastSeenAt.getTime() < 60000
-      : false;
+    const online = record.lastSeenAt ? Date.now() - record.lastSeenAt.getTime() < 60000 : false;
 
     const baseFields = {
       id: record.id,

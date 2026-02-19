@@ -122,7 +122,8 @@ export class DevicesController {
   @ApiExtraModels(UpdateLanternSettingsDto, UpdateMatrxSettingsDto)
   @ApiOperation({
     summary: 'Update device settings (owner only)',
-    description: 'Update display name and type-specific settings. The `type` field must match the device type.',
+    description:
+      'Update display name and type-specific settings. The `type` field must match the device type.',
   })
   @ApiResponse({
     status: 200,

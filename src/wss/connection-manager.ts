@@ -248,7 +248,9 @@ export class DeviceConnectionManager {
     };
 
     ws.on('close', (code: number, reason: Buffer) => {
-      this.logger.log(`Connection closed device=${deviceId} code=${code} reason=${reason.toString() || 'none'}`);
+      this.logger.log(
+        `Connection closed device=${deviceId} code=${code} reason=${reason.toString() || 'none'}`
+      );
       cleanup();
     });
 

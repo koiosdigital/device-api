@@ -41,5 +41,7 @@ export const handleUploadCoreDump = async (
   message: UploadCoreDump
 ): Promise<void> => {
   logger.log(`Core dump received from device: ${ws.getDeviceID()}`);
-  logger.log(`Firmware info: project=${message.firmwareProject} version=${message.firmwareVersion} variant=${message.firmwareVariant}`);
+  logger.log(
+    `Firmware info: project=${message.firmwareProject} version=${message.firmwareVersion} variant=${message.firmwareVariant}`
+  );
 };

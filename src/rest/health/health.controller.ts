@@ -27,7 +27,10 @@ export class HealthController {
         database: 'up',
       };
     } catch (error) {
-      this.logger.error('Health check failed', error instanceof Error ? error.stack : String(error));
+      this.logger.error(
+        'Health check failed',
+        error instanceof Error ? error.stack : String(error)
+      );
       return {
         status: 'degraded',
         timestamp: new Date().toISOString(),

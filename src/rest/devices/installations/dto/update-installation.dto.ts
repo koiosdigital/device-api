@@ -1,11 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsInt,
-  Min,
-  IsOptional,
-  ValidateNested,
-} from 'class-validator';
+import { IsBoolean, IsInt, Min, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InstallationConfigInputDto } from './create-installation.dto';
 

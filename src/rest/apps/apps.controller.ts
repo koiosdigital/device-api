@@ -83,7 +83,11 @@ export class AppsController {
 
   @Get()
   @ApiOperation({ summary: 'List all available Pixlet apps with pagination and filtering' })
-  @ApiResponse({ status: 200, description: 'Paginated list of apps', type: PaginatedAppsResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of apps',
+    type: PaginatedAppsResponseDto,
+  })
   async listApps(@Query() query: ListAppsQueryDto): Promise<PaginatedAppsResponseDto> {
     return this.appsService.listAppsPaginated(query);
   }

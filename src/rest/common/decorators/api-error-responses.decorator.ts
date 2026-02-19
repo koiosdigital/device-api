@@ -63,8 +63,5 @@ export function ApiInternalErrorResponse(description = 'Internal server error') 
 }
 
 export function ApiCommonErrorResponses() {
-  return applyDecorators(
-    ApiUnauthorizedResponse(),
-    ApiInternalErrorResponse()
-  );
+  return applyDecorators(ApiUnauthorizedResponse(), ApiInternalErrorResponse());
 }

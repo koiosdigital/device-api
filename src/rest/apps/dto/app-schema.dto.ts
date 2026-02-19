@@ -64,54 +64,14 @@ export class AppSchemaFieldBaseDto {
 
   @ApiPropertyOptional({ description: 'Default value serialized as text', example: 'seattle' })
   default?: string;
-
-  @ApiPropertyOptional({
-    description: 'Selectable options for dropdown style fields',
-    type: () => [AppSchemaOptionDto],
-  })
-  options?: AppSchemaOptionDto[];
-
-  @ApiPropertyOptional({ description: 'Palette of colors for selection fields', type: [String] })
-  palette?: string[];
-
-  @ApiPropertyOptional({
-    description: 'Available notification sounds',
-    type: () => [AppSchemaSoundDto],
-  })
-  sounds?: AppSchemaSoundDto[];
-
-  @ApiPropertyOptional({
-    description: 'Field ID used as a source for generated fields',
-    example: 'city',
-  })
-  source?: string;
-
-  @ApiPropertyOptional({
-    description: 'Pixlet handler invoked for dynamic data',
-    example: 'fetch_cities',
-  })
-  handler?: string;
-
-  @ApiPropertyOptional({ description: 'OAuth client identifier', example: 'pixlet-google' })
-  client_id?: string;
-
-  @ApiPropertyOptional({
-    description: 'OAuth authorization endpoint',
-    example: 'https://accounts.google.com/o/oauth2/v2/auth',
-  })
-  authorization_endpoint?: string;
-
-  @ApiPropertyOptional({
-    description: 'OAuth scopes requested for the flow',
-    type: [String],
-    example: ['profile', 'email'],
-  })
-  scopes?: string[];
 }
 
 export class AppSchemaColorFieldDto extends AppSchemaFieldBaseDto {
   @ApiProperty({ description: 'Discriminator for color field', enum: ['color'], example: 'color' })
   type!: 'color';
+
+  @ApiPropertyOptional({ description: 'Palette of colors for selection fields', type: [String] })
+  palette?: string[];
 }
 
 export class AppSchemaDatetimeFieldDto extends AppSchemaFieldBaseDto {
@@ -130,6 +90,12 @@ export class AppSchemaDropdownFieldDto extends AppSchemaFieldBaseDto {
     example: 'dropdown',
   })
   type!: 'dropdown';
+
+  @ApiProperty({
+    description: 'Selectable options',
+    type: () => [AppSchemaOptionDto],
+  })
+  options!: AppSchemaOptionDto[];
 }
 
 export class AppSchemaGeneratedFieldDto extends AppSchemaFieldBaseDto {
@@ -139,6 +105,12 @@ export class AppSchemaGeneratedFieldDto extends AppSchemaFieldBaseDto {
     example: 'generated',
   })
   type!: 'generated';
+
+  @ApiProperty({ description: 'Field ID used as source for generated fields', example: 'city' })
+  source!: string;
+
+  @ApiProperty({ description: 'Pixlet handler invoked for dynamic data', example: 'fetch_cities' })
+  handler!: string;
 }
 
 export class AppSchemaLocationValueDto {
@@ -177,6 +149,12 @@ export class AppSchemaLocationBasedFieldDto extends AppSchemaFieldBaseDto {
     example: 'locationbased',
   })
   type!: 'locationbased';
+
+  @ApiProperty({
+    description: 'Pixlet handler invoked with location JSON to generate options',
+    example: 'fetch_options',
+  })
+  handler!: string;
 }
 
 export class AppSchemaOnOffFieldDto extends AppSchemaFieldBaseDto {
@@ -187,6 +165,12 @@ export class AppSchemaOnOffFieldDto extends AppSchemaFieldBaseDto {
 export class AppSchemaRadioFieldDto extends AppSchemaFieldBaseDto {
   @ApiProperty({ description: 'Discriminator for radio field', enum: ['radio'], example: 'radio' })
   type!: 'radio';
+
+  @ApiProperty({
+    description: 'Selectable options',
+    type: () => [AppSchemaOptionDto],
+  })
+  options!: AppSchemaOptionDto[];
 }
 
 export class AppSchemaTextFieldDto extends AppSchemaFieldBaseDto {
@@ -201,6 +185,12 @@ export class AppSchemaTypeaheadFieldDto extends AppSchemaFieldBaseDto {
     example: 'typeahead',
   })
   type!: 'typeahead';
+
+  @ApiProperty({
+    description: 'Pixlet handler invoked with search pattern to generate options',
+    example: 'search_handler',
+  })
+  handler!: string;
 }
 
 export class AppSchemaOAuth2FieldDto extends AppSchemaFieldBaseDto {
@@ -210,6 +200,39 @@ export class AppSchemaOAuth2FieldDto extends AppSchemaFieldBaseDto {
     example: 'oauth2',
   })
   type!: 'oauth2';
+
+  @ApiProperty({ description: 'Pixlet handler invoked for dynamic data', example: 'oauth_handler' })
+  handler!: string;
+
+  @ApiPropertyOptional({ description: 'OAuth client identifier', example: 'pixlet-google' })
+  client_id?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Indicates if PKCE is used, S256 method will be used if true, and the handler will receive an additional code_verifier parameter.',
+    example: true,
+  })
+  pkce?: boolean;
+
+  @ApiProperty({
+    description: 'OAuth authorization endpoint',
+    example: 'https://accounts.google.com/o/oauth2/v2/auth',
+  })
+  authorization_endpoint!: string;
+
+  @ApiProperty({
+    description: 'OAuth scopes requested for the flow',
+    type: [String],
+    example: ['profile', 'email'],
+  })
+  scopes!: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'If true, the user provides their own OAuth client credentials. Mutually exclusive with client_id.',
+    example: false,
+  })
+  user_defined_client?: boolean;
 }
 
 export class AppSchemaOAuth1FieldDto extends AppSchemaFieldBaseDto {
@@ -233,6 +256,27 @@ export class AppSchemaNotificationFieldDto extends AppSchemaFieldBaseDto {
     example: 'notification',
   })
   type!: 'notification';
+
+  @ApiProperty({
+    description: 'Available notification sounds',
+    type: () => [AppSchemaSoundDto],
+  })
+  sounds!: AppSchemaSoundDto[];
+}
+
+export class AppSchemaGeoJSONFieldDto extends AppSchemaFieldBaseDto {
+  @ApiProperty({
+    description: 'Discriminator for GeoJSON field',
+    enum: ['geojson'],
+    example: 'geojson',
+  })
+  type!: 'geojson';
+
+  @ApiPropertyOptional({
+    description: 'If true, enables point collection on the map UI in addition to polygon drawing',
+    example: true,
+  })
+  collect_point?: boolean;
 }
 
 export type AppSchemaFieldDto =
@@ -249,7 +293,8 @@ export type AppSchemaFieldDto =
   | AppSchemaOAuth2FieldDto
   | AppSchemaOAuth1FieldDto
   | AppSchemaPNGFieldDto
-  | AppSchemaNotificationFieldDto;
+  | AppSchemaNotificationFieldDto
+  | AppSchemaGeoJSONFieldDto;
 
 export const APP_SCHEMA_FIELD_MODELS = [
   AppSchemaColorFieldDto,
@@ -266,6 +311,7 @@ export const APP_SCHEMA_FIELD_MODELS = [
   AppSchemaOAuth1FieldDto,
   AppSchemaPNGFieldDto,
   AppSchemaNotificationFieldDto,
+  AppSchemaGeoJSONFieldDto,
 ] as const;
 
 const APP_SCHEMA_FIELD_TYPE_MAP = {
@@ -283,6 +329,7 @@ const APP_SCHEMA_FIELD_TYPE_MAP = {
   oauth1: AppSchemaOAuth1FieldDto,
   png: AppSchemaPNGFieldDto,
   notification: AppSchemaNotificationFieldDto,
+  geojson: AppSchemaGeoJSONFieldDto,
 } as const;
 
 const schemaFieldOneOf = APP_SCHEMA_FIELD_MODELS.map((model) => ({

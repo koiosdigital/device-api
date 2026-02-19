@@ -12,7 +12,8 @@ export class SetSkipStateDto {
 
 export class SetPinStateDto {
   @ApiProperty({
-    description: 'Whether to pin this installation (unpins any other pinned installation on the device)',
+    description:
+      'Whether to pin this installation (unpins any other pinned installation on the device)',
     example: true,
   })
   @IsBoolean()

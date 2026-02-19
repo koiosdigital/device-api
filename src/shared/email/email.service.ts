@@ -43,7 +43,9 @@ class EmailService {
       const smtpSecure = process.env.SMTP_SECURE === 'true';
 
       if (!smtpHost || !smtpUser || !smtpPass) {
-        throw new Error('SMTP configuration is incomplete. Set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.');
+        throw new Error(
+          'SMTP configuration is incomplete. Set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.'
+        );
       }
 
       this.transporter = nodemailer.createTransport({
@@ -108,11 +110,12 @@ class EmailService {
         title: 'Device Share Invitation',
         preview: `You've been invited to access a device on ${appName}`,
         appName,
-        heading: 'You\'ve been invited!',
+        heading: "You've been invited!",
         body: `<strong>${params.inviterName}</strong> has invited you to access their device <strong>"${params.deviceName}"</strong>. Click the button below to accept the invitation and start using the device.`,
         buttonUrl: params.inviteUrl,
         buttonText: 'Accept Invitation',
-        secondaryText: 'This invitation link will expire in 24 hours. If you didn\'t expect this invitation, you can safely ignore this email.',
+        secondaryText:
+          "This invitation link will expire in 24 hours. If you didn't expect this invitation, you can safely ignore this email.",
         footerText: 'You received this email because someone invited you to access a device.',
         year: new Date().getFullYear(),
       },
