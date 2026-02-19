@@ -39,6 +39,7 @@ import {
   CallSchemaHandlerRequestDto,
   CallSchemaHandlerResponseDto,
 } from '@/rest/apps/dto/call-schema-handler.dto';
+import { GeocoderRequestDto } from '@/rest/apps/dto/geocoder.dto';
 import type { RenderOptions } from '@/shared/matrx-renderer/matrx-renderer.service';
 import { ListAppsQueryDto } from '@/rest/apps/dto/list-apps-query.dto';
 import { PaginatedAppsResponseDto } from '@/rest/apps/dto/paginated-apps-response.dto';
@@ -226,6 +227,17 @@ export class AppsController {
     @Body() config: Record<string, unknown>
   ): Promise<ValidateSchemaResponseDto> {
     return this.appsService.validateConfiguration(id, config);
+  }
+
+  @Post(':id/geocoder')
+  @ApiOperation({ summary: 'Reverse geocode coordinates to a location value' })
+  @ApiBody({ type: GeocoderRequestDto })
+  @ApiResponse({ status: 200, description: 'Resolved location', type: AppSchemaLocationValueDto })
+  @ApiBadRequestResponse('Invalid coordinates')
+  async geocode(
+    @Body() body: GeocoderRequestDto
+  ): Promise<AppSchemaLocationValueDto> {
+    return this.appsService.reverseGeocode(body.lat, body.lng);
   }
 
   @Post(':id/call_handler')

@@ -15,6 +15,7 @@ import { redis } from '@/shared/utils';
 import { AppManifestDto } from '@/rest/apps/dto/app-manifest.dto';
 import {
   AppSchemaDto,
+  AppSchemaLocationValueDto,
   type AppSchemaFieldDto,
   AppSchemaNotificationFieldDto,
 } from '@/rest/apps/dto/app-schema.dto';
@@ -24,6 +25,28 @@ import type { CallSchemaHandlerRequestDto } from '@/rest/apps/dto/call-schema-ha
 import { CallSchemaHandlerResponseDto } from '@/rest/apps/dto/call-schema-handler.dto';
 import { ListAppsQueryDto } from '@/rest/apps/dto/list-apps-query.dto';
 import { PaginatedAppsResponseDto } from '@/rest/apps/dto/paginated-apps-response.dto';
+
+interface GoogleAddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
+interface GoogleGeocodingResult {
+  formatted_address: string;
+  place_id: string;
+  address_components: GoogleAddressComponent[];
+}
+
+interface GoogleGeocodingResponse {
+  status: string;
+  results: GoogleGeocodingResult[];
+}
+
+interface GoogleTimezoneResponse {
+  status: string;
+  timeZoneId: string;
+}
 
 const CACHE_TTL_SECONDS = 300; // 5 minutes
 const REDIS_KEY_PREFIX = 'matrx-renderer:';
@@ -158,6 +181,43 @@ export class AppsService {
       this.matrxRendererService.previewApp(id, format, options)
     );
     return Buffer.from(buffer);
+  }
+
+  async reverseGeocode(lat: number, lng: number): Promise<AppSchemaLocationValueDto> {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      throw new InternalServerErrorException('Google Maps API key is not configured');
+    }
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new InternalServerErrorException('Google Maps geocoding request failed');
+    }
+
+    const data = (await res.json()) as GoogleGeocodingResponse;
+    if (data.status !== 'OK' || !data.results.length) {
+      throw new BadRequestException(`Geocoding failed: ${data.status}`);
+    }
+
+    const result = data.results[0];
+    const locality =
+      result.address_components.find((c) => c.types.includes('locality'))?.long_name ??
+      result.address_components.find((c) => c.types.includes('sublocality'))?.long_name ??
+      '';
+
+    const timezoneUrl = `https://maps.googleapis.com/maps/api/timezone/json?location=${lat},${lng}&timestamp=${Math.floor(Date.now() / 1000)}&key=${apiKey}`;
+    const tzRes = await fetch(timezoneUrl);
+    const tzData = (await tzRes.json()) as GoogleTimezoneResponse;
+
+    return {
+      lat: String(lat),
+      lng: String(lng),
+      description: result.formatted_address,
+      locality,
+      place_id: result.place_id,
+      timezone: tzData.status === 'OK' ? tzData.timeZoneId : '',
+    };
   }
 
   async callSchemaHandler(
