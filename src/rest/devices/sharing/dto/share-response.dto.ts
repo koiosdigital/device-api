@@ -46,23 +46,12 @@ export class DeviceSharesResponseDto {
 }
 
 export class ShareInviteCreatedDto {
-  @ApiProperty({ description: 'Invite ID' })
+  @ApiProperty({ description: 'Share claim ID' })
   id!: string;
 
-  @ApiProperty({ description: 'Email address the invite was sent to' })
+  @ApiProperty({ description: 'Email address the share was created for' })
   email!: string;
 
-  @ApiProperty({ description: 'When the invite expires' })
-  expiresAt!: string;
-}
-
-export class AcceptShareResultDto {
-  @ApiProperty({ description: 'Device ID that was shared' })
-  deviceId!: string;
-
-  @ApiProperty({ description: 'Device display name' })
-  deviceName!: string;
-
-  @ApiProperty({ description: 'Success message' })
-  message!: string;
+  @ApiPropertyOptional({ description: 'When the invite expires (null for direct shares)' })
+  expiresAt!: string | null;
 }

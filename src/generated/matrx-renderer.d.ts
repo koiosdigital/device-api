@@ -325,6 +325,10 @@ export interface components {
             handler_name: string;
             /** @description Serialized payload passed to the handler */
             data?: string;
+            /** @description Current app configuration passed to handlers that accept a config argument */
+            config: {
+                [key: string]: string;
+            };
         };
         CallSchemaHandlerResponse: {
             /** @description Raw handler response */

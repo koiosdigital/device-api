@@ -6,21 +6,45 @@ import { prisma, notifySettingsUpdate, notifyFactoryReset } from '@/shared/utils
 import { SignJWT } from 'jose';
 import type {
   DeviceResponseDto,
-  LanternSettingsDto,
-  MatrxSettingsDto,
+  LanternDeviceSettingsDto,
+  MatrxDeviceSettingsDto,
 } from '@/rest/devices/dto/device-response.dto';
 import type { ClaimTokenResponseDto } from '@/rest/devices/dto/claim-token-response.dto';
 import type { UpdateDeviceSettingsDto } from '@/rest/devices/dto/update-device-settings.dto';
 
 @Injectable()
 export class DevicesService {
-  async listDevicesForUser(userId: string): Promise<DeviceResponseDto[]> {
+  async listDevicesForUser(userId: string, email?: string): Promise<DeviceResponseDto[]> {
+    // Migrate any email-based claims to the real user ID
+    if (email) {
+      const emailClaims = await prisma.deviceClaims.findMany({
+        where: { userId: email },
+      });
+
+      for (const claim of emailClaims) {
+        const existingClaim = await prisma.deviceClaims.findUnique({
+          where: { deviceId_userId: { deviceId: claim.deviceId, userId } },
+        });
+
+        if (existingClaim) {
+          // User already has a claim for this device — delete the email-based duplicate
+          await prisma.deviceClaims.delete({ where: { id: claim.id } });
+        } else {
+          // Migrate the email-based claim to the real user ID
+          await prisma.deviceClaims.update({
+            where: { id: claim.id },
+            data: { userId },
+          });
+        }
+      }
+    }
+
     const records = await prisma.device.findMany({
       where: {
         deviceClaims: {
           some: {
             userId,
-            claimType: ClaimType.OWNER,
+            claimType: { in: [ClaimType.OWNER, ClaimType.SHARED] },
           },
         },
       },
@@ -190,39 +214,21 @@ export class DevicesService {
           ...(deviceInfo && deviceInfo), // Flatten deviceInfo into settings
         }
       : deviceInfo
-        ? deviceInfo // If no settings but have deviceInfo, return deviceInfo only
+        ? { displayName: record.id, typeSettings: null, ...deviceInfo }
         : null;
 
     if (record.type === DeviceType.LANTERN) {
       return {
         ...baseFields,
         type: 'LANTERN' as const,
-        settings: settings as
-          | {
-              displayName: string;
-              typeSettings: LanternSettingsDto | null;
-              width?: number;
-              height?: number;
-              hasLightSensor?: boolean;
-            }
-          | { width: number; height: number; hasLightSensor: boolean }
-          | null,
+        settings: settings as LanternDeviceSettingsDto | null,
       };
     }
 
     return {
       ...baseFields,
       type: 'MATRX' as const,
-      settings: settings as
-        | {
-            displayName: string;
-            typeSettings: MatrxSettingsDto | null;
-            width?: number;
-            height?: number;
-            hasLightSensor?: boolean;
-          }
-        | { width: number; height: number; hasLightSensor: boolean }
-        | null,
+      settings: settings as MatrxDeviceSettingsDto | null,
     };
   }
 

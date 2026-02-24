@@ -234,9 +234,7 @@ export class AppsController {
   @ApiBody({ type: GeocoderRequestDto })
   @ApiResponse({ status: 200, description: 'Resolved location', type: AppSchemaLocationValueDto })
   @ApiBadRequestResponse('Invalid coordinates')
-  async geocode(
-    @Body() body: GeocoderRequestDto
-  ): Promise<AppSchemaLocationValueDto> {
+  async geocode(@Body() body: GeocoderRequestDto): Promise<AppSchemaLocationValueDto> {
     return this.appsService.reverseGeocode(body.lat, body.lng);
   }
 

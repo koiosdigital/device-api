@@ -4,6 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { Prisma } from '@/generated/prisma/client';
 import { prisma, notifyScheduleUpdate } from '@/shared/utils';
 import { MatrxRendererService } from '@/shared/matrx-renderer/matrx-renderer.service';
 import { AppsService } from '@/rest/apps/apps.service';
@@ -76,7 +77,7 @@ export class InstallationsService {
         config: {
           app_id: dto.config.app_id,
           params: validation.normalized_config,
-        },
+        } as Prisma.InputJsonValue,
         enabled: dto.enabled ?? true,
         displayTime: dto.displayTime ?? 0,
         sortOrder,
@@ -175,7 +176,7 @@ export class InstallationsService {
     const installation = await prisma.matrxInstallation.update({
       where: { id: installationId },
       data: {
-        ...(dto.config && { config: updatedConfig }),
+        ...(dto.config && { config: updatedConfig as Prisma.InputJsonValue }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
         ...(dto.skippedByUser !== undefined && { skippedByUser: dto.skippedByUser }),
         ...(dto.pinnedByUser !== undefined && { pinnedByUser: dto.pinnedByUser }),

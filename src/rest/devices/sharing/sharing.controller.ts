@@ -11,13 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { SharingService } from './sharing.service';
-import {
-  CreateShareInviteDto,
-  AcceptShareInviteDto,
-  DeviceSharesResponseDto,
-  ShareInviteCreatedDto,
-  AcceptShareResultDto,
-} from './dto';
+import { CreateShareInviteDto, DeviceSharesResponseDto, ShareInviteCreatedDto } from './dto';
 import { CurrentUser } from '@/shared/current-user.decorator';
 import type { AuthenticatedUser } from '@/rest/auth/oidc-auth.service';
 import { OwnerGuard } from '@/rest/guards/owner.guard';
@@ -56,14 +50,14 @@ export class SharingController {
   @Post('invite')
   @UseGuards(OwnerGuard)
   @ApiOperation({
-    summary: 'Create a share invite',
+    summary: 'Share device access with a user by email',
     description:
-      'Sends an email invitation to share device access. Only device owners can create invites.',
+      'Grants shared device access to a user by email. The share will be linked to the user when they next log in.',
   })
   @ApiParam({ name: 'deviceId', description: 'Device ID' })
-  @ApiResponse({ status: 201, description: 'Invite created', type: ShareInviteCreatedDto })
-  @ApiBadRequestResponse('Invalid email or failed to send invite')
-  @ApiForbiddenResponse('Only device owners can create invites')
+  @ApiResponse({ status: 201, description: 'Share created', type: ShareInviteCreatedDto })
+  @ApiBadRequestResponse('Invalid email')
+  @ApiForbiddenResponse('Only device owners can share devices')
   @ApiNotFoundResponse('Device not found')
   async createInvite(
     @Param('deviceId') deviceId: string,
@@ -111,29 +105,5 @@ export class SharingController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<void> {
     return this.sharingService.revokeShare(deviceId, userId, user.sub);
-  }
-}
-
-@ApiTags('Device Sharing')
-@ApiBearerAuth()
-@ApiCommonErrorResponses()
-@Controller({ path: 'shares', version: '1' })
-export class ShareAcceptController {
-  constructor(private readonly sharingService: SharingService) {}
-
-  @Post('accept')
-  @ApiOperation({
-    summary: 'Accept a share invite',
-    description:
-      'Accepts a share invitation using the token from the invite email. The authenticated user will be granted shared access to the device.',
-  })
-  @ApiResponse({ status: 200, description: 'Share accepted', type: AcceptShareResultDto })
-  @ApiBadRequestResponse('Invalid or expired token')
-  @ApiNotFoundResponse('Invite not found')
-  async acceptInvite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: AcceptShareInviteDto
-  ): Promise<AcceptShareResultDto> {
-    return this.sharingService.acceptInvite(dto.token, user.sub);
   }
 }

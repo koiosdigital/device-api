@@ -48,7 +48,7 @@ export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all devices owned by the current user' })
+  @ApiOperation({ summary: 'List all devices accessible to the current user' })
   @ApiResponse({
     status: 200,
     description: 'List of devices',
@@ -70,7 +70,7 @@ export class DevicesController {
     },
   })
   async findAll(@CurrentUser() user: AuthenticatedUser): Promise<DeviceResponseDto[]> {
-    return this.devicesService.listDevicesForUser(user.sub);
+    return this.devicesService.listDevicesForUser(user.sub, user.email);
   }
 
   @Get('get_claim_token')

@@ -228,6 +228,7 @@ export class AppsService {
       this.matrxRendererService.callSchemaHandler(id, {
         handler_name: payload.handler_name,
         data: payload.data,
+        config: payload.config,
       })
     );
     return this.mapCallHandlerResponse(response);
