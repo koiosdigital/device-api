@@ -95,7 +95,12 @@ export type MatrxSettings = {
   screenOffLux: number;
 };
 
-export type DeviceSettings = LanternSettings | MatrxSettings;
+export type NemotoSettings = {
+  bootPresetId: number;
+  autoDiscoverSec: number;
+};
+
+export type DeviceSettings = LanternSettings | MatrxSettings | NemotoSettings;
 
 /**
  * Get default settings for a device type
@@ -114,6 +119,11 @@ export function getDefaultTypeSettings(type: DeviceType): DeviceSettings {
       autoBrightnessEnabled: false,
       screenOffLux: 5,
     } as MatrxSettings;
+  } else if (type === 'NEMOTO') {
+    return {
+      bootPresetId: 0,
+      autoDiscoverSec: 0,
+    } as NemotoSettings;
   } else {
     throw new Error(`No default settings for device type: ${type}`);
   }
@@ -168,7 +178,7 @@ export function uuidBytesToString(bytes: Uint8Array): string {
  */
 export function getDeviceTypeFromCN(cn: string): DeviceType {
   const type = cn.split('-')[0].toUpperCase();
-  if (type === 'LANTERN' || type === 'MATRX') {
+  if (type === 'LANTERN' || type === 'MATRX' || type === 'NEMOTO') {
     return type as DeviceType;
   }
   throw new Error(`Invalid device type in CN: ${cn}`);

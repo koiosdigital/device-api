@@ -1,7 +1,6 @@
 import type { WebSocketAdapter } from '@/shared/types';
 import { create, toBinary } from '@bufbuild/protobuf';
 import { createHash } from 'crypto';
-import { jwtVerify } from 'jose';
 import createClient from 'openapi-fetch';
 import type { paths } from '@/generated/matrx-renderer';
 import {
@@ -24,6 +23,7 @@ import {
 } from '@/protobufs/generated/ts/kd/v1/common_pb';
 import { prisma, redis, uuidBytesToString, uuidStringToBytes } from '@/shared/utils';
 import { handleUploadCoreDump, sendJoinResponse } from '@/shared/handler';
+import { verifyClaimToken } from '@/shared/claim';
 import type { MatrxSettings } from '@/shared/utils';
 import { handleCertReport, handleCertRenewRequest } from '@/wss/pki';
 import { LoggerService } from '@/shared/logger';
@@ -281,33 +281,6 @@ const handleScheduleItemSetPinStateMessage = async (
 
   await redis.publish(`device:${deviceId}`, JSON.stringify({ type: 'schedule_update' }));
 };
-
-const claimSecret = process.env.CLAIM_JWT_SECRET;
-const claimSecretKey = claimSecret ? Buffer.from(claimSecret, 'utf8') : null;
-
-async function verifyClaimToken(tokenBytes: Uint8Array): Promise<string | null> {
-  if (!claimSecretKey) {
-    return null;
-  }
-
-  const token = Buffer.from(tokenBytes).toString('utf8').trim();
-  if (!token) {
-    return null;
-  }
-
-  try {
-    const { payload } = await jwtVerify(token, claimSecretKey);
-    if (typeof payload.user_id === 'string' && payload.user_id.length > 0) {
-      return payload.user_id;
-    }
-  } catch (error) {
-    logger.warn(
-      `Failed to verify claim token: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-
-  return null;
-}
 
 const handleClaimDeviceMessage = async (
   ws: WebSocketAdapter,

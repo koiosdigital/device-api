@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'http';
 import type { WebSocket } from 'ws';
 import { fromBinary } from '@bufbuild/protobuf';
 import { MatrxMessageSchema } from '@/protobufs/generated/ts/kd/v1/matrx_pb';
+import { NemotoMessageSchema } from '@/protobufs/generated/ts/kd/v1/nemoto_pb';
 import { WebSocketAdapter } from '@/shared/types';
 import { handleConnect } from '@/shared/handler';
 import { lanternMessageHandler, lanternQueueHandler } from '@/wss/lantern/handler';
@@ -10,6 +11,11 @@ import {
   matrxQueueHandler,
   sendMatrxDeviceConfigOnBoot,
 } from '@/wss/matrx/handler';
+import {
+  nemotoMessageHandler,
+  nemotoQueueHandler,
+  sendNemotoJoinResponse,
+} from '@/wss/nemoto/handler';
 import { getDefaultTypeSettings, getDeviceTypeFromCN, prisma, redisSub } from '@/shared/utils';
 import { LoggerService } from '@/shared/logger';
 
@@ -91,6 +97,8 @@ export class DeviceConnectionManager {
 
       if (type === 'MATRX') {
         await sendMatrxDeviceConfigOnBoot(wsAdapter);
+      } else if (type === 'NEMOTO') {
+        sendNemotoJoinResponse(wsAdapter, { isClaimed: Boolean(ownerClaim) });
       }
 
       this.setupSocketLifecycle(wsAdapter, channel, messageHandler, type);
@@ -131,6 +139,8 @@ export class DeviceConnectionManager {
             await lanternQueueHandler(wsAdapter, msg);
           } else if (type === 'MATRX') {
             await matrxQueueHandler(wsAdapter, msg);
+          } else if (type === 'NEMOTO') {
+            await nemotoQueueHandler(wsAdapter, msg);
           }
         } catch (error) {
           // Only log if socket is still open (otherwise it's expected)
@@ -179,6 +189,12 @@ export class DeviceConnectionManager {
               `Received message device=${deviceId} type=${matrxMessage.message.case}`
             );
             await matrxMessageHandler(wsAdapter, matrxMessage);
+          } else if (deviceType === 'NEMOTO') {
+            const nemotoMessage = fromBinary(NemotoMessageSchema, payload);
+            this.logger.debug(
+              `Received message device=${deviceId} type=${nemotoMessage.message.case}`
+            );
+            await nemotoMessageHandler(wsAdapter, nemotoMessage);
           } else if (deviceType === 'LANTERN') {
             await lanternMessageHandler(wsAdapter, payload);
           } else {

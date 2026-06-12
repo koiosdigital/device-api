@@ -17,6 +17,7 @@ datasource db {
 enum DeviceType {
   LANTERN
   MATRX
+  NEMOTO
 }
 
 enum ClaimType {
