@@ -53,17 +53,22 @@ COPY . .
 RUN --mount=type=cache,id=build,target=/app/node_modules/.cache \
     pnpm run build
 
+# Prune dev dependencies for the runtime image.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store && \
+    pnpm install --prod --frozen-lockfile --ignore-scripts
+
+# Fetch the Prisma schema-engine binary so `migrate deploy` has it at runtime.
+# The @prisma/engines postinstall that downloads it is allow-listed in
+# pnpm-workspace.yaml but skipped above by --ignore-scripts, so run it directly.
+# (We can't drop --ignore-scripts wholesale: the root postinstall runs
+# `buf generate`, which needs dev-only deps absent from a --prod install.)
+RUN pnpm rebuild @prisma/engines
+
 # ============================================
 # Stage 2: Final runtime image (s6-supervised)
 # ============================================
 FROM node:lts-alpine AS final
-
-# Enable Corepack to manage pnpm
-RUN corepack enable
-
-# Set up pnpm environment variables
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
 
 # Set working directory
 WORKDIR /app
@@ -77,17 +82,16 @@ COPY --from=build /command /command
 COPY --from=build /etc/s6-overlay /etc/s6-overlay
 COPY --from=build /package /package
 
-# Copy built application + manifests, then install production dependencies.
-# `prisma` is a production dependency so `prisma migrate deploy` is available
+# Copy the built app and the pruned production node_modules from the build
+# stage. node_modules is owned by `node` (the user each s6 service drops to) so
+# the bundled Prisma schema engine is usable without a runtime download.
+# `prisma` is a production dependency, so `prisma migrate deploy` is available
 # to the migrations service at startup.
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build --chown=node:node /app/prisma ./prisma
 COPY --from=build --chown=node:node /app/prisma.config.ts ./prisma.config.ts
-
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm config set store-dir /pnpm/store && \
-    pnpm install --prod --frozen-lockfile --ignore-scripts
 
 # Copy s6 service definitions and the migration script
 COPY --chown=node:node docker/s6-rc.d /etc/s6-overlay/s6-rc.d/
