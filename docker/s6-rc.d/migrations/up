@@ -1,0 +1,2 @@
+#!/command/with-contenv sh
+exec s6-setuidgid node /app/docker/run-migrations.sh

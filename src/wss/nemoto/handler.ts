@@ -17,7 +17,7 @@ import {
 import { handleUploadCoreDump } from '@/shared/handler';
 import { verifyClaimToken } from '@/shared/claim';
 import { signCsr } from '@/wss/pki';
-import { prisma } from '@/shared/utils';
+import { getDefaultTypeSettings, prisma } from '@/shared/utils';
 import { LoggerService } from '@/shared/logger';
 
 const logger = new LoggerService();
@@ -157,6 +157,17 @@ const handleClaimDeviceMessage = async (
         where: { deviceId_userId: { deviceId, userId } },
         create: { deviceId, userId, claimType: 'OWNER' },
         update: { claimType: 'OWNER' },
+      });
+
+      // Re-seed default settings (mirrors the connect-time upsert) so the
+      // freshly-claimed device always has a settings row. The device's
+      // configUpsert sync overwrites these once it reconnects.
+      await tx.deviceSettings.create({
+        data: {
+          deviceId,
+          displayName: deviceId,
+          typeSettings: getDefaultTypeSettings('NEMOTO'),
+        },
       });
     });
 

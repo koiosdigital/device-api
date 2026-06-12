@@ -1,0 +1,4 @@
+#!/command/with-contenv sh
+echo "[app] Starting application..."
+cd /app
+exec s6-setuidgid node node dist/index.js
