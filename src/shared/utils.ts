@@ -81,6 +81,107 @@ export async function notifyFactoryReset(deviceId: string, reason?: string): Pro
   notifyLogger.log(`factory_reset device=${deviceId} subscribers=${subscribers}`);
 }
 
+/**
+ * Publish a raw message to a device's channel. Returns the number of WSS
+ * subscribers that received it (0 ⇒ device is not currently connected).
+ */
+export async function publishDeviceMessage(
+  deviceId: string,
+  message: Record<string, unknown>
+): Promise<number> {
+  const subscribers = await redis.publish(`device:${deviceId}`, JSON.stringify(message));
+  notifyLogger.debug(`publish device=${deviceId} type=${message.type} subscribers=${subscribers}`);
+  return subscribers;
+}
+
+// --- Nemoto cloud→device notifications (consumed by nemotoQueueHandler) -------
+
+export async function notifyNemotoConfigUpdate(deviceId: string): Promise<number> {
+  return publishDeviceMessage(deviceId, { type: 'nemoto_config_update' });
+}
+
+export async function notifyNemotoPresetUpsert(
+  deviceId: string,
+  presetId: number
+): Promise<number> {
+  return publishDeviceMessage(deviceId, { type: 'nemoto_preset_upsert', presetId });
+}
+
+export async function notifyNemotoPresetDelete(
+  deviceId: string,
+  presetId: number
+): Promise<number> {
+  return publishDeviceMessage(deviceId, { type: 'nemoto_preset_delete', presetId });
+}
+
+export async function notifyNemotoScheduleUpsert(
+  deviceId: string,
+  scheduleId: number
+): Promise<number> {
+  return publishDeviceMessage(deviceId, { type: 'nemoto_schedule_upsert', scheduleId });
+}
+
+export async function notifyNemotoScheduleDelete(
+  deviceId: string,
+  scheduleId: number
+): Promise<number> {
+  return publishDeviceMessage(deviceId, { type: 'nemoto_schedule_delete', scheduleId });
+}
+
+// --- Nemoto live state (ephemeral, written by the WSS handler) ----------------
+
+export type NemotoLiveField = 'system' | 'setup' | 'fleet' | 'ota';
+
+// Refreshed on every write; absence ⇒ the device hasn't reported since its last
+// (re)connect. Fleet summaries arrive ~60s, so 5 min tolerates a few misses.
+export const NEMOTO_LIVE_TTL_SECONDS = 300;
+
+export interface NemotoLiveState {
+  system: unknown | null;
+  setup: unknown | null;
+  fleet: unknown | null;
+  ota: unknown | null;
+  at: string | null;
+}
+
+const nemotoLiveKey = (deviceId: string): string => `nemoto:live:${deviceId}`;
+
+/**
+ * Upsert one field of a device's live-state hash and (re)arm its TTL.
+ * Called by the WSS handler when the device reports system/setup/fleet/ota.
+ */
+export async function writeNemotoLiveState(
+  deviceId: string,
+  field: NemotoLiveField,
+  value: unknown
+): Promise<void> {
+  const key = nemotoLiveKey(deviceId);
+  await redis
+    .multi()
+    .hset(key, field, JSON.stringify(value), 'at', new Date().toISOString())
+    .expire(key, NEMOTO_LIVE_TTL_SECONDS)
+    .exec();
+}
+
+/**
+ * Read a device's live-state snapshot, or null if nothing has been reported
+ * (key absent/expired). Individual fields are null until first reported.
+ */
+export async function readNemotoLiveState(deviceId: string): Promise<NemotoLiveState | null> {
+  const hash = await redis.hgetall(nemotoLiveKey(deviceId));
+  if (!hash || Object.keys(hash).length === 0) {
+    return null;
+  }
+  const parse = (raw: string | undefined): unknown | null => (raw ? JSON.parse(raw) : null);
+  return {
+    system: parse(hash.system),
+    setup: parse(hash.setup),
+    fleet: parse(hash.fleet),
+    ota: parse(hash.ota),
+    at: hash.at ?? null,
+  };
+}
+
 // Type-specific settings
 export type LanternSettings = {
   brightness: number;

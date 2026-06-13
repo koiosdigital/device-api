@@ -25,6 +25,26 @@ enum ClaimType {
   SHARED
 }
 
+enum NemotoCycleType {
+  PARTIAL
+  FULL
+}
+
+enum NemotoScheduleActionType {
+  DISPLAY_PRESET
+  DISPLAY_SOLID
+  CLEAR
+}
+
+enum NemotoActivityKind {
+  SCHEDULE_PRESET_SHOWN
+  PRESET_SHOWN_MANUAL
+  DISCOVERY_COMPLETE
+  BOOTLOADER_ENTERED
+  EMERGENCY_STOP_FIRED
+  QUIET_HOURS_BLOCKED
+}
+
 model Device {
   id                                String              @id
   type                              DeviceType
@@ -43,6 +63,12 @@ model Device {
   lanternGroupDevices LanternGroupDevices[]
   installations       MatrxInstallation[]      @relation("DeviceInstallations")
   shareInvites        DeviceShareInvite[]
+
+  // Nemoto relations
+  nemotoConfig   NemotoConfig?
+  nemotoPresets  NemotoPreset[]
+  nemotoSchedules NemotoSchedule[]
+  nemotoActivity NemotoActivityEvent[]
 
   @@index([type])
   @@index([lastSeenAt])
@@ -148,4 +174,91 @@ model DeviceShareInvite {
   @@index([deviceId])
   @@index([targetEmail])
   @@index([expiresAt])
+}
+
+// =============================================================================
+// Nemoto (split-flap display host) — cloud-persisted, bidirectionally synced.
+// Live state (system info, fleet health, OTA progress) is ephemeral and lives
+// in Redis, not here. See src/shared/utils.ts (nemoto:live:{deviceId}).
+// =============================================================================
+
+// Display + quiet-hours config (single document per device, last-writer-wins).
+// proto NemotoConfigUpsert.device_name maps to DeviceSettings.displayName, so it
+// is intentionally not stored here.
+model NemotoConfig {
+  id              Int             @id @default(autoincrement())
+  deviceId        String          @unique
+  bootPresetId    Int             @default(0)
+  defaultSpeed    Int             @default(0) // flaps/sec, 0 = no override
+  defaultAccel    Int             @default(0) // steps/s^2
+  autoDiscoverSec Int             @default(0)
+  displayEffectId String          @default("")
+  displayDelayMs  Int             @default(0)
+  cycleType       NemotoCycleType @default(PARTIAL)
+  quietWindows    Json            @default("[]") // NemotoQuietWindow[]
+  syncedAt        DateTime        @default(now()) // maps proto updated_at (conflict key)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+// User-curated preset. `presetId` is the device-local uint32 sync key (not the
+// PK). `deletedAt` tombstones survive for the digest-then-diff sync.
+model NemotoPreset {
+  id        String    @id @default(uuid())
+  deviceId  String
+  presetId  Int // device-local uint32 sync id
+  name      String
+  width     Int
+  height    Int
+  flaps     Bytes // width * height bytes, row-major (each 0-63)
+  syncedAt  DateTime // maps proto updated_at (conflict key)
+  deletedAt DateTime? // tombstone
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, presetId])
+  @@index([deviceId])
+  @@index([deviceId, syncedAt])
+}
+
+// User-curated schedule. `scheduleId` is the device-local uint32 sync key.
+model NemotoSchedule {
+  id             String                   @id @default(uuid())
+  deviceId       String
+  scheduleId     Int // device-local uint32 sync id
+  name           String
+  cron           String
+  enabled        Boolean                  @default(true)
+  obeyQuietHours Boolean                  @default(true)
+  actionType     NemotoScheduleActionType
+  actionPresetId Int                      @default(0) // DISPLAY_PRESET
+  actionFlap     Int                      @default(0) // DISPLAY_SOLID (0-63)
+  syncedAt       DateTime // maps proto updated_at (conflict key)
+  deletedAt      DateTime? // tombstone
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, scheduleId])
+  @@index([deviceId])
+  @@index([deviceId, syncedAt])
+}
+
+// Append-only activity timeline (drives the cloud timeline + push notifs).
+model NemotoActivityEvent {
+  id        String             @id @default(uuid())
+  deviceId  String
+  ts        DateTime // device-reported event time
+  kind      NemotoActivityKind
+  payload   Json // the oneof event body
+  createdAt DateTime           @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, ts])
 }

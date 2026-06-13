@@ -1,10 +1,7 @@
 import type { WebSocketAdapter } from '@/shared/types';
 import { create, toBinary } from '@bufbuild/protobuf';
 import { X509Certificate } from 'crypto';
-import {
-  NemotoMessageSchema,
-  type NemotoMessage,
-} from '@/protobufs/generated/ts/kd/v1/nemoto_pb';
+import { NemotoMessageSchema, type NemotoMessage } from '@/protobufs/generated/ts/kd/v1/nemoto_pb';
 import {
   type CertReport,
   type CertRenewRequest,
@@ -19,10 +16,39 @@ import { verifyClaimToken } from '@/shared/claim';
 import { signCsr } from '@/wss/pki';
 import { getDefaultTypeSettings, prisma } from '@/shared/utils';
 import { LoggerService } from '@/shared/logger';
+import {
+  applyConfigUpsert,
+  applyPresetDelete,
+  applyPresetUpsert,
+  applyScheduleDelete,
+  applyScheduleUpsert,
+  buildConfigSyncResponse,
+  buildConfigUpsert,
+  buildDisplayCell,
+  buildDisplayClear,
+  buildPresetDelete,
+  buildPresetSyncDiff,
+  buildPresetUpsert,
+  buildReboot,
+  buildRunScheduleNow,
+  buildScheduleDelete,
+  buildScheduleSyncDiff,
+  buildScheduleUpsert,
+  buildShowPreset,
+  ingestFleetSummary,
+  ingestOtaProgress,
+  ingestSetupStatus,
+  ingestSystemInfo,
+  recordActivityEvent,
+} from '@/wss/nemoto/sync';
 
 const logger = new LoggerService();
 logger.setServerType('SocketServer');
 logger.setContext('NemotoHandler');
+
+const sendNemotoMessage = (ws: WebSocketAdapter, msg: NemotoMessage): void => {
+  ws.send(toBinary(NemotoMessageSchema, msg), true);
+};
 
 const THREE_YEARS_MS = 3 * 365 * 24 * 60 * 60 * 1000;
 
@@ -193,7 +219,8 @@ export const nemotoMessageHandler = async (
     return;
   }
 
-  logger.debug(`Nemoto message received device=${ws.getDeviceID()} type=${message.message.case}`);
+  const deviceId = ws.getDeviceID();
+  logger.debug(`Nemoto message received device=${deviceId} type=${message.message.case}`);
 
   switch (message.message.case) {
     // --- Liveness ---
@@ -215,21 +242,51 @@ export const nemotoMessageHandler = async (
       await handleCertRenewRequestMessage(ws, message.message.value);
       return;
 
-    // --- Nemoto-specific (not yet implemented) ---
-    case 'systemInfo':
-    case 'setupStatus':
-    case 'fleetSummary':
-    case 'activityEvent':
+    // --- Bidirectional sync: device requests our full authoritative state ---
     case 'presetSyncRequest':
-    case 'presetUpsert':
-    case 'presetDelete':
+      sendNemotoMessage(ws, await buildPresetSyncDiff(deviceId));
+      return;
     case 'scheduleSyncRequest':
-    case 'scheduleUpsert':
-    case 'scheduleDelete':
+      sendNemotoMessage(ws, await buildScheduleSyncDiff(deviceId));
+      return;
     case 'configRequest':
+      sendNemotoMessage(ws, await buildConfigSyncResponse(deviceId));
+      return;
+
+    // --- Bidirectional sync: device pushes a local edit up (conflict-resolved) ---
+    case 'presetUpsert':
+      await applyPresetUpsert(deviceId, message.message.value);
+      return;
+    case 'presetDelete':
+      await applyPresetDelete(deviceId, message.message.value);
+      return;
+    case 'scheduleUpsert':
+      await applyScheduleUpsert(deviceId, message.message.value);
+      return;
+    case 'scheduleDelete':
+      await applyScheduleDelete(deviceId, message.message.value);
+      return;
     case 'configUpsert':
+      await applyConfigUpsert(deviceId, message.message.value);
+      return;
+
+    // --- Live state (ephemeral → Redis) ---
+    case 'systemInfo':
+      await ingestSystemInfo(deviceId, message.message.value);
+      return;
+    case 'setupStatus':
+      await ingestSetupStatus(deviceId, message.message.value);
+      return;
+    case 'fleetSummary':
+      await ingestFleetSummary(deviceId, message.message.value);
+      return;
     case 'otaProgress':
-      logger.warn(`Nemoto message type not yet implemented: ${message.message.case}`);
+      await ingestOtaProgress(deviceId, message.message.value);
+      return;
+
+    // --- Activity timeline (→ Postgres) ---
+    case 'activityEvent':
+      await recordActivityEvent(deviceId, message.message.value);
       return;
 
     default:
@@ -237,8 +294,61 @@ export const nemotoMessageHandler = async (
   }
 };
 
+// Cloud→device fan-out. Messages are published to `device:${deviceId}` by the
+// REST layer (notifyNemoto*/publishDeviceMessage); we translate each to the
+// corresponding NemotoMessage and send it to the connected device.
 export const nemotoQueueHandler = async (ws: WebSocketAdapter, message: any): Promise<void> => {
-  // TODO: implement cloud->device fan-out (preset/schedule/config sync, remote
-  // display commands, OTA) once those features land.
-  logger.debug(`Queue received device=${ws.getDeviceID()} type=${message?.type}`);
+  const deviceId = ws.getDeviceID();
+  const type = message?.type;
+  logger.debug(`Queue received device=${deviceId} type=${type}`);
+
+  switch (type) {
+    // Sync fan-out (a REST edit changed cloud state).
+    case 'nemoto_config_update':
+      sendNemotoMessage(ws, await buildConfigUpsert(deviceId));
+      return;
+    case 'nemoto_preset_upsert': {
+      const msg = await buildPresetUpsert(deviceId, message.presetId);
+      if (msg) {
+        sendNemotoMessage(ws, msg);
+      }
+      return;
+    }
+    case 'nemoto_preset_delete':
+      sendNemotoMessage(ws, buildPresetDelete(message.presetId));
+      return;
+    case 'nemoto_schedule_upsert': {
+      const msg = await buildScheduleUpsert(deviceId, message.scheduleId);
+      if (msg) {
+        sendNemotoMessage(ws, msg);
+      }
+      return;
+    }
+    case 'nemoto_schedule_delete':
+      sendNemotoMessage(ws, buildScheduleDelete(message.scheduleId));
+      return;
+
+    // Remote display commands.
+    case 'nemoto_show_preset':
+      sendNemotoMessage(ws, buildShowPreset(message.presetId, Boolean(message.forceQuiet)));
+      return;
+    case 'nemoto_display_cell':
+      sendNemotoMessage(
+        ws,
+        buildDisplayCell(message.x, message.y, message.flap, Boolean(message.forceQuiet))
+      );
+      return;
+    case 'nemoto_display_clear':
+      sendNemotoMessage(ws, buildDisplayClear(Boolean(message.forceQuiet)));
+      return;
+    case 'nemoto_run_schedule':
+      sendNemotoMessage(ws, buildRunScheduleNow(message.scheduleId, Boolean(message.forceQuiet)));
+      return;
+    case 'nemoto_reboot':
+      sendNemotoMessage(ws, buildReboot());
+      return;
+
+    default:
+      logger.warn(`Queue unknown message type device=${deviceId} type=${type}`);
+  }
 };

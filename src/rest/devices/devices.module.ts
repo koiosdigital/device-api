@@ -6,9 +6,10 @@ import { OwnerGuard } from '@/rest/guards/owner.guard';
 import { SharedGuard } from '@/rest/guards/shared.guard';
 import { InstallationsModule } from '@/rest/devices/installations/installations.module';
 import { SharingModule } from '@/rest/devices/sharing/sharing.module';
+import { NemotoModule } from '@/rest/devices/nemoto/nemoto.module';
 
 @Module({
-  imports: [AuthModule, InstallationsModule, SharingModule],
+  imports: [AuthModule, InstallationsModule, SharingModule, NemotoModule],
   controllers: [DevicesController],
   providers: [DevicesService, OwnerGuard, SharedGuard],
 })
