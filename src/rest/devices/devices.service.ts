@@ -8,6 +8,7 @@ import type {
   DeviceResponseDto,
   LanternDeviceSettingsDto,
   MatrxDeviceSettingsDto,
+  NemotoDeviceSettingsDto,
 } from '@/rest/devices/dto/device-response.dto';
 import type { ClaimTokenResponseDto } from '@/rest/devices/dto/claim-token-response.dto';
 import type { UpdateDeviceSettingsDto } from '@/rest/devices/dto/update-device-settings.dto';
@@ -222,6 +223,14 @@ export class DevicesService {
         ...baseFields,
         type: 'LANTERN' as const,
         settings: settings as LanternDeviceSettingsDto | null,
+      };
+    }
+
+    if (record.type === DeviceType.NEMOTO) {
+      return {
+        ...baseFields,
+        type: 'NEMOTO' as const,
+        settings: settings as NemotoDeviceSettingsDto | null,
       };
     }
 

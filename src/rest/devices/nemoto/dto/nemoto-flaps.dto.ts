@@ -17,11 +17,17 @@ export class NemotoFlapDefDto {
   @ApiProperty({
     description: 'Displayed character, or null for color flaps',
     example: 'A',
+    type: String,
     nullable: true,
   })
   glyph!: string | null;
 
-  @ApiProperty({ description: '#RRGGBB for color flaps, else null', example: null, nullable: true })
+  @ApiProperty({
+    description: '#RRGGBB for color flaps, else null',
+    example: '#DA291C',
+    type: String,
+    nullable: true,
+  })
   color!: string | null;
 }
 

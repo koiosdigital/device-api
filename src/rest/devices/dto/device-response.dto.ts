@@ -64,6 +64,24 @@ export class MatrxSettingsDto {
   screenOffLux!: number;
 }
 
+export class NemotoSettingsDto {
+  @ApiProperty({
+    description: 'Preset shown on boot (0 = none)',
+    example: 0,
+    type: Number,
+    minimum: 0,
+  })
+  bootPresetId!: number;
+
+  @ApiProperty({
+    description: 'Auto-discovery interval in seconds (0 = off)',
+    example: 0,
+    type: Number,
+    minimum: 0,
+  })
+  autoDiscoverSec!: number;
+}
+
 // Base settings DTO with common fields
 export class DeviceSettingsBaseDto {
   @ApiProperty({
@@ -108,6 +126,15 @@ export class MatrxDeviceSettingsDto extends DeviceSettingsBaseDto {
     nullable: true,
   })
   typeSettings!: MatrxSettingsDto | null;
+}
+
+export class NemotoDeviceSettingsDto extends DeviceSettingsBaseDto {
+  @ApiPropertyOptional({
+    description: 'Nemoto-specific settings',
+    type: () => NemotoSettingsDto,
+    nullable: true,
+  })
+  typeSettings!: NemotoSettingsDto | null;
 }
 
 // Base device response
@@ -199,5 +226,24 @@ export class MatrxDeviceResponseDto extends DeviceResponseBaseDto {
   settings!: MatrxDeviceSettingsDto | null;
 }
 
+export class NemotoDeviceResponseDto extends DeviceResponseBaseDto {
+  @ApiProperty({
+    description: 'Type of device',
+    enum: ['NEMOTO'],
+    example: 'NEMOTO',
+  })
+  type!: 'NEMOTO';
+
+  @ApiPropertyOptional({
+    description: 'Device settings including display name and Nemoto-specific configuration',
+    type: () => NemotoDeviceSettingsDto,
+    nullable: true,
+  })
+  settings!: NemotoDeviceSettingsDto | null;
+}
+
 // Union type for API responses
-export type DeviceResponseDto = LanternDeviceResponseDto | MatrxDeviceResponseDto;
+export type DeviceResponseDto =
+  | LanternDeviceResponseDto
+  | MatrxDeviceResponseDto
+  | NemotoDeviceResponseDto;

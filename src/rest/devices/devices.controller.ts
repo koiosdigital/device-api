@@ -22,6 +22,7 @@ import {
   type DeviceResponseDto,
   LanternDeviceResponseDto,
   MatrxDeviceResponseDto,
+  NemotoDeviceResponseDto,
 } from '@/rest/devices/dto/device-response.dto';
 import {
   UpdateLanternSettingsDto,
@@ -42,7 +43,7 @@ import {
 @ApiTags('Devices')
 @ApiBearerAuth()
 @ApiCommonErrorResponses()
-@ApiExtraModels(LanternDeviceResponseDto, MatrxDeviceResponseDto)
+@ApiExtraModels(LanternDeviceResponseDto, MatrxDeviceResponseDto, NemotoDeviceResponseDto)
 @Controller({ path: 'devices', version: '1' })
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
@@ -58,12 +59,14 @@ export class DevicesController {
         oneOf: [
           { $ref: getSchemaPath(LanternDeviceResponseDto) },
           { $ref: getSchemaPath(MatrxDeviceResponseDto) },
+          { $ref: getSchemaPath(NemotoDeviceResponseDto) },
         ],
         discriminator: {
           propertyName: 'type',
           mapping: {
             LANTERN: getSchemaPath(LanternDeviceResponseDto),
             MATRX: getSchemaPath(MatrxDeviceResponseDto),
+            NEMOTO: getSchemaPath(NemotoDeviceResponseDto),
           },
         },
       },
@@ -98,12 +101,14 @@ export class DevicesController {
       oneOf: [
         { $ref: getSchemaPath(LanternDeviceResponseDto) },
         { $ref: getSchemaPath(MatrxDeviceResponseDto) },
+        { $ref: getSchemaPath(NemotoDeviceResponseDto) },
       ],
       discriminator: {
         propertyName: 'type',
         mapping: {
           LANTERN: getSchemaPath(LanternDeviceResponseDto),
           MATRX: getSchemaPath(MatrxDeviceResponseDto),
+          NEMOTO: getSchemaPath(NemotoDeviceResponseDto),
         },
       },
     },
@@ -132,12 +137,14 @@ export class DevicesController {
       oneOf: [
         { $ref: getSchemaPath(LanternDeviceResponseDto) },
         { $ref: getSchemaPath(MatrxDeviceResponseDto) },
+        { $ref: getSchemaPath(NemotoDeviceResponseDto) },
       ],
       discriminator: {
         propertyName: 'type',
         mapping: {
           LANTERN: getSchemaPath(LanternDeviceResponseDto),
           MATRX: getSchemaPath(MatrxDeviceResponseDto),
+          NEMOTO: getSchemaPath(NemotoDeviceResponseDto),
         },
       },
     },
